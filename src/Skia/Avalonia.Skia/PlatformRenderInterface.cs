@@ -1,70 +1,156 @@
+// Copyright (c) The Avalonia Project. All rights reserved.
+// Licensed under the MIT license. See licence.md file in the project root for full license information.
+
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Avalonia.Controls.Platform.Surfaces;
 using Avalonia.Media;
+using Avalonia.OpenGL;
 using Avalonia.Platform;
 using SkiaSharp;
 
 namespace Avalonia.Skia
 {
-    public class PlatformRenderInterface : IPlatformRenderInterface
+    /// <summary>
+    /// Skia platform render interface.
+    /// </summary>
+    internal class PlatformRenderInterface : IPlatformRenderInterface
     {
-        public IBitmapImpl CreateBitmap(int width, int height)
+        private readonly ICustomSkiaGpu _customSkiaGpu;
+
+        private GRContext GrContext { get; }
+
+        public IEnumerable<string> InstalledFontNames => SKFontManager.Default.FontFamilies;
+
+        public PlatformRenderInterface(ICustomSkiaGpu customSkiaGpu)
         {
-            return CreateRenderTargetBitmap(width, height);
+            if (customSkiaGpu != null)
+            {
+                _customSkiaGpu = customSkiaGpu;
+
+                GrContext = _customSkiaGpu.GrContext;
+
+                return;
+            }
+
+            var gl = AvaloniaLocator.Current.GetService<IWindowingPlatformGlFeature>();
+            if (gl != null)
+            {
+                var display = gl.ImmediateContext.Display;
+                gl.ImmediateContext.MakeCurrent();
+                using (var iface = display.Type == GlDisplayType.OpenGL2
+                    ? GRGlInterface.AssembleGlInterface((_, proc) => display.GlInterface.GetProcAddress(proc))
+                    : GRGlInterface.AssembleGlesInterface((_, proc) => display.GlInterface.GetProcAddress(proc)))
+                {
+                    GrContext = GRContext.Create(GRBackend.OpenGL, iface);
+                }
+            }
         }
 
-        public IFormattedTextImpl CreateFormattedText(string text, string fontFamilyName, double fontSize, FontStyle fontStyle,
-            TextAlignment textAlignment, FontWeight fontWeight, TextWrapping wrapping)
+        /// <inheritdoc />
+        public IFormattedTextImpl CreateFormattedText(
+            string text,
+            Typeface typeface,
+            TextAlignment textAlignment,
+            TextWrapping wrapping,
+            Size constraint,
+            IReadOnlyList<FormattedTextStyleSpan> spans)
         {
-            return new FormattedTextImpl(text, fontFamilyName, fontSize, fontStyle, textAlignment, fontWeight, wrapping);
+            return new FormattedTextImpl(text, typeface, textAlignment, wrapping, constraint, spans);
         }
 
+        public IGeometryImpl CreateEllipseGeometry(Rect rect) => new EllipseGeometryImpl(rect);
+
+        public IGeometryImpl CreateLineGeometry(Point p1, Point p2) => new LineGeometryImpl(p1, p2);
+
+        public IGeometryImpl CreateRectangleGeometry(Rect rect) => new RectangleGeometryImpl(rect);
+
+        /// <inheritdoc />
         public IStreamGeometryImpl CreateStreamGeometry()
         {
             return new StreamGeometryImpl();
         }
 
-        IBitmapImpl LoadBitmap(byte[] data)
+        /// <inheritdoc />
+        public IBitmapImpl LoadBitmap(Stream stream)
         {
-            var bitmap = new SKBitmap();
-            if (!SKImageDecoder.DecodeMemory(data, bitmap))
-            {
-                throw new ArgumentException("Unable to load bitmap from provided data");
-            }
-
-            return new BitmapImpl(bitmap);
+            return new ImmutableBitmap(stream);
         }
 
-        public IBitmapImpl LoadBitmap(System.IO.Stream stream)
-        {
-            using (var sr = new BinaryReader(stream))
-            {
-                return LoadBitmap(sr.ReadBytes((int)stream.Length));
-            }
-        }
-
+        /// <inheritdoc />
         public IBitmapImpl LoadBitmap(string fileName)
         {
-            return LoadBitmap(File.ReadAllBytes(fileName));
+            using (var stream = File.OpenRead(fileName))
+            {
+                return LoadBitmap(stream);
+            }
         }
 
-        public IRenderTargetBitmapImpl CreateRenderTargetBitmap(int width, int height)
+        /// <inheritdoc />
+        public IBitmapImpl LoadBitmap(PixelFormat format, IntPtr data, PixelSize size, Vector dpi, int stride)
         {
-            if (width < 1)
-                throw new ArgumentException("Width can't be less than 1", nameof(width));
-            if (height < 1)
-                throw new ArgumentException("Height can't be less than 1", nameof(height));
-
-            return new BitmapImpl(width, height);
+            return new ImmutableBitmap(size, dpi, stride, format, data);
         }
 
-        public IRenderTarget CreateRenderer(IPlatformHandle handle)
+        /// <inheritdoc />
+        public IRenderTargetBitmapImpl CreateRenderTargetBitmap(PixelSize size, Vector dpi)
         {
-            return new WindowRenderTarget(handle.Handle);
+            if (size.Width < 1)
+            {
+                throw new ArgumentException("Width can't be less than 1", nameof(size));
+            }
+
+            if (size.Height < 1)
+            {
+                throw new ArgumentException("Height can't be less than 1", nameof(size));
+            }
+
+            var createInfo = new SurfaceRenderTarget.CreateInfo
+            {
+                Width = size.Width,
+                Height = size.Height,
+                Dpi = dpi,
+                DisableTextLcdRendering = false,
+                GrContext = GrContext
+            };
+
+            return new SurfaceRenderTarget(createInfo);
+        }
+
+        /// <inheritdoc />
+        public IRenderTarget CreateRenderTarget(IEnumerable<object> surfaces)
+        {
+            if (_customSkiaGpu != null)
+            {
+                ICustomSkiaRenderTarget customRenderTarget = _customSkiaGpu.TryCreateRenderTarget(surfaces);
+
+                if (customRenderTarget != null)
+                {
+                    return new CustomRenderTarget(customRenderTarget);
+                }
+            }
+
+            foreach (var surface in surfaces)
+            {
+                if (surface is IGlPlatformSurface glSurface && GrContext != null)
+                {
+                    return new GlRenderTarget(GrContext, glSurface);
+                }
+                if (surface is IFramebufferPlatformSurface framebufferSurface)
+                {
+                    return new FramebufferRenderTarget(framebufferSurface);
+                }
+            }
+
+            throw new NotSupportedException(
+                "Don't know how to create a Skia render target from any of provided surfaces");
+        }
+
+        /// <inheritdoc />
+        public IWriteableBitmapImpl CreateWriteableBitmap(PixelSize size, Vector dpi, PixelFormat? format = null)
+        {
+            return new WriteableBitmapImpl(size, dpi, format);
         }
     }
 }

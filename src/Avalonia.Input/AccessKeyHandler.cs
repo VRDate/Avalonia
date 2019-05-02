@@ -44,9 +44,41 @@ namespace Avalonia.Input
         private bool _ignoreAltUp;
 
         /// <summary>
+        /// Whether the AltKey is down.
+        /// </summary>
+        private bool _altIsDown;
+
+        /// <summary>
+        /// Element to restore following AltKey taking focus.
+        /// </summary>
+        private IInputElement _restoreFocusElement;
+
+        /// <summary>
+        /// The window's main menu.
+        /// </summary>
+        private IMainMenu _mainMenu;
+
+        /// <summary>
         /// Gets or sets the window's main menu.
         /// </summary>
-        public IMainMenu MainMenu { get; set; }
+        public IMainMenu MainMenu
+        {
+            get => _mainMenu;
+            set
+            {
+                if (_mainMenu != null)
+                {
+                    _mainMenu.MenuClosed -= MainMenuClosed;
+                }
+
+                _mainMenu = value;
+
+                if (_mainMenu != null)
+                {
+                    _mainMenu.MenuClosed += MainMenuClosed;
+                }
+            }
+        }
 
         /// <summary>
         /// Sets the owner of the access key handler.
@@ -110,8 +142,14 @@ namespace Avalonia.Input
         {
             if (e.Key == Key.LeftAlt)
             {
+                _altIsDown = true;
+
                 if (MainMenu == null || !MainMenu.IsOpen)
                 {
+                    // TODO: Use FocusScopes to store the current element and restore it when context menu is closed.
+                    // Save currently focused input element.
+                    _restoreFocusElement = FocusManager.Instance.Current;                    
+
                     // When Alt is pressed without a main menu, or with a closed main menu, show
                     // access key markers in the window (i.e. "_File").
                     _owner.ShowAccessKeys = _showingAccessKeys = true;
@@ -121,10 +159,17 @@ namespace Avalonia.Input
                     // If the Alt key is pressed and the main menu is open, close the main menu.
                     CloseMenu();
                     _ignoreAltUp = true;
+
+                    _restoreFocusElement?.Focus();
+                    _restoreFocusElement = null;
                 }
 
                 // We always handle the Alt key.
                 e.Handled = true;
+            }
+            else if (_altIsDown)
+            {
+                _ignoreAltUp = true;
             }
         }
 
@@ -137,13 +182,7 @@ namespace Avalonia.Input
         {
             bool menuIsOpen = MainMenu?.IsOpen == true;
 
-            if (e.Key == Key.Escape && menuIsOpen)
-            {
-                // When the Escape key is pressed with the main menu open, close it.
-                CloseMenu();
-                e.Handled = true;
-            }
-            else if ((e.Modifiers & InputModifiers.Alt) != 0 || menuIsOpen)
+            if ((e.Modifiers & InputModifiers.Alt) != 0 || menuIsOpen)
             {
                 // If any other key is pressed with the Alt key held down, or the main menu is open,
                 // find all controls who have registered that access key.
@@ -179,6 +218,8 @@ namespace Avalonia.Input
             switch (e.Key)
             {
                 case Key.LeftAlt:
+                    _altIsDown = false;
+
                     if (_ignoreAltUp)
                     {
                         _ignoreAltUp = false;
@@ -193,8 +234,11 @@ namespace Avalonia.Input
 
                 case Key.F10:
                     _owner.ShowAccessKeys = _showingAccessKeys = true;
-                    MainMenu.Open();
-                    e.Handled = true;
+                    if (MainMenu != null)
+                    {
+                        MainMenu.Open();
+                        e.Handled = true;
+                    }
                     break;
             }
         }
@@ -219,6 +263,11 @@ namespace Avalonia.Input
         {
             MainMenu.Close();
             _owner.ShowAccessKeys = _showingAccessKeys = false;
+        }
+
+        private void MainMenuClosed(object sender, EventArgs e)
+        {
+            _owner.ShowAccessKeys = false;
         }
     }
 }

@@ -51,6 +51,7 @@ namespace Avalonia.Controls
         /// Gets or sets the content to display.
         /// </summary>
         [Content]
+        [DependsOn(nameof(ContentTemplate))]
         public object Content
         {
             get { return GetValue(ContentProperty); }
@@ -96,7 +97,19 @@ namespace Avalonia.Controls
         /// <inheritdoc/>
         void IContentPresenterHost.RegisterContentPresenter(IContentPresenter presenter)
         {
-            Presenter = presenter;
+            RegisterContentPresenter(presenter);
+        }
+
+        /// <summary>
+        /// Called when an <see cref="IContentPresenter"/> is registered with the control.
+        /// </summary>
+        /// <param name="presenter">The presenter.</param>
+        protected virtual void RegisterContentPresenter(IContentPresenter presenter)
+        {
+            if (presenter.Name == "PART_ContentPresenter")
+            {
+                Presenter = presenter;
+            }
         }
     }
 }

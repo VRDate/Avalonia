@@ -1,12 +1,14 @@
 // Copyright (c) The Avalonia Project. All rights reserved.
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
+using Avalonia.Controls;
+
 namespace Avalonia.Styling
 {
     /// <summary>
     /// Defines the interface for styles.
     /// </summary>
-    public interface IStyle
+    public interface IStyle : IResourceNode
     {
         /// <summary>
         /// Attaches the style to a control if the style's selector matches.
@@ -15,15 +17,13 @@ namespace Avalonia.Styling
         /// <param name="container">
         /// The control that contains this style. May be null.
         /// </param>
-        void Attach(IStyleable control, IStyleHost container);
-
-        /// <summary>
-        /// Tries to find a named resource within the style.
-        /// </summary>
-        /// <param name="name">The resource name.</param>
         /// <returns>
-        /// The resource if found, otherwise <see cref="AvaloniaProperty.UnsetValue"/>.
+        /// True if the style can match a control of type <paramref name="control"/>
+        /// (even if it does not match this control specifically); false if the style
+        /// can never match.
         /// </returns>
-        object FindResource(string name);
+        bool Attach(IStyleable control, IStyleHost container);
+
+        void Detach();
     }
 }

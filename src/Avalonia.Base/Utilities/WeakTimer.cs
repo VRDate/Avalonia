@@ -1,8 +1,4 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using Avalonia.Threading;
 
 namespace Avalonia.Utilities
@@ -23,7 +19,6 @@ namespace Avalonia.Utilities
             _timer = new DispatcherTimer();
             
             _timer.Tick += delegate { OnTick(); };
-            _timer.Start();
         }
 
         private void OnTick()

@@ -9,7 +9,7 @@ using Avalonia.Data;
 namespace Avalonia.Controls.Templates
 {
     /// <summary>
-    /// A template used to build hierachical data.
+    /// A template used to build hierarchical data.
     /// </summary>
     public class FuncTreeDataTemplate : FuncDataTemplate, ITreeDataTemplate
     {
@@ -62,7 +62,7 @@ namespace Avalonia.Controls.Templates
         /// <returns>The child items, or null if no child items.</returns>
         public InstancedBinding ItemsSelector(object item)
         {
-            return new InstancedBinding(this?._itemsSelector(item));
+            return InstancedBinding.OneTime(this?._itemsSelector(item));
         }
 
         /// <summary>

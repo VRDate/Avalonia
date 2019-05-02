@@ -41,6 +41,10 @@ namespace Avalonia.Direct2D1
             return new Rect(new Point(r.Left, r.Top), new Point(r.Right, r.Bottom));
         }
 
+        public static PixelSize ToAvalonia(this Size2 p) => new PixelSize(p.Width, p.Height);
+
+        public static Vector ToAvaloniaVector(this Size2F p) => new Vector(p.Width, p.Height);
+
         public static RawRectangleF ToSharpDX(this Rect r)
         {
             return new RawRectangleF((float)r.X, (float)r.Y, (float)r.Right, (float)r.Bottom);
@@ -88,31 +92,58 @@ namespace Avalonia.Direct2D1
                 return CapStyle.Triangle;
         }
 
+        public static Guid ToWic(this Platform.PixelFormat format)
+        {
+            if (format == Platform.PixelFormat.Rgb565)
+                return SharpDX.WIC.PixelFormat.Format16bppBGR565;
+            if (format == Platform.PixelFormat.Bgra8888)
+                return SharpDX.WIC.PixelFormat.Format32bppPBGRA;
+            if (format == Platform.PixelFormat.Rgba8888)
+                return SharpDX.WIC.PixelFormat.Format32bppPRGBA;
+            throw new ArgumentException("Unknown pixel format");
+        }
+
         /// <summary>
         /// Converts a pen to a Direct2D stroke style.
         /// </summary>
         /// <param name="pen">The pen to convert.</param>
-        /// <param name="target">The render target.</param>
+        /// <param name="renderTarget">The render target.</param>
         /// <returns>The Direct2D brush.</returns>
-        public static StrokeStyle ToDirect2DStrokeStyle(this Avalonia.Media.Pen pen, SharpDX.Direct2D1.RenderTarget target)
+        public static StrokeStyle ToDirect2DStrokeStyle(this Avalonia.Media.Pen pen, SharpDX.Direct2D1.RenderTarget renderTarget)
         {
+            return pen.ToDirect2DStrokeStyle(renderTarget.Factory);
+        }
+
+        /// <summary>
+        /// Converts a pen to a Direct2D stroke style.
+        /// </summary>
+        /// <param name="pen">The pen to convert.</param>
+        /// <param name="factory">The factory associated with this resource.</param>
+        /// <returns>The Direct2D brush.</returns>
+        public static StrokeStyle ToDirect2DStrokeStyle(this Avalonia.Media.Pen pen, Factory factory)
+        {
+            var d2dLineCap = pen.LineCap.ToDirect2D();
+
             var properties = new StrokeStyleProperties
             {
                 DashStyle = DashStyle.Solid,
                 MiterLimit = (float)pen.MiterLimit,
                 LineJoin = pen.LineJoin.ToDirect2D(),
-                StartCap = pen.StartLineCap.ToDirect2D(),
-                EndCap = pen.EndLineCap.ToDirect2D(),
-                DashCap = pen.DashCap.ToDirect2D()
+                StartCap = d2dLineCap,
+                EndCap = d2dLineCap,
+                DashCap = d2dLineCap
             };
-            var dashes = new float[0];
+            float[] dashes = null;
             if (pen.DashStyle?.Dashes != null && pen.DashStyle.Dashes.Count > 0)
             {
                 properties.DashStyle = DashStyle.Custom;
                 properties.DashOffset = (float)pen.DashStyle.Offset;
-                dashes = pen.DashStyle?.Dashes.Select(x => (float)x).ToArray();
+                dashes = pen.DashStyle.Dashes.Select(x => (float)x).ToArray();
             }
-            return new StrokeStyle(target.Factory, properties, dashes);
+
+            dashes = dashes ?? Array.Empty<float>();
+
+            return new StrokeStyle(factory, properties, dashes);
         }
 
         /// <summary>

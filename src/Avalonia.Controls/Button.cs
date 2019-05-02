@@ -4,9 +4,10 @@
 using System;
 using System.Linq;
 using System.Windows.Input;
+using Avalonia.Data;
 using Avalonia.Input;
 using Avalonia.Interactivity;
-using Avalonia.Rendering;
+using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 
 namespace Avalonia.Controls
@@ -32,6 +33,8 @@ namespace Avalonia.Controls
     /// </summary>
     public class Button : ContentControl
     {
+        private ICommand _command;
+
         /// <summary>
         /// Defines the <see cref="ClickMode"/> property.
         /// </summary>
@@ -41,8 +44,9 @@ namespace Avalonia.Controls
         /// <summary>
         /// Defines the <see cref="Command"/> property.
         /// </summary>
-        public static readonly StyledProperty<ICommand> CommandProperty =
-            AvaloniaProperty.Register<Button, ICommand>(nameof(Command));
+        public static readonly DirectProperty<Button, ICommand> CommandProperty =
+            AvaloniaProperty.RegisterDirect<Button, ICommand>(nameof(Command),
+                button => button.Command, (button, command) => button.Command = command, enableDataValidation: true);
 
         /// <summary>
         /// Defines the <see cref="HotKey"/> property.
@@ -66,7 +70,10 @@ namespace Avalonia.Controls
         /// Defines the <see cref="Click"/> event.
         /// </summary>
         public static readonly RoutedEvent<RoutedEventArgs> ClickEvent =
-            RoutedEvent.Register<Button, RoutedEventArgs>("Click", RoutingStrategies.Bubble);
+            RoutedEvent.Register<Button, RoutedEventArgs>(nameof(Click), RoutingStrategies.Bubble);
+
+        public static readonly StyledProperty<bool> IsPressedProperty =
+            AvaloniaProperty.Register<Button, bool>(nameof(IsPressed));
 
         /// <summary>
         /// Initializes static members of the <see cref="Button"/> class.
@@ -74,9 +81,9 @@ namespace Avalonia.Controls
         static Button()
         {
             FocusableProperty.OverrideDefaultValue(typeof(Button), true);
-            ClickEvent.AddClassHandler<Button>(x => x.OnClick);
             CommandProperty.Changed.Subscribe(CommandChanged);
             IsDefaultProperty.Changed.Subscribe(IsDefaultChanged);
+            PseudoClass<Button>(IsPressedProperty, ":pressed");
         }
 
         /// <summary>
@@ -102,8 +109,8 @@ namespace Avalonia.Controls
         /// </summary>
         public ICommand Command
         {
-            get { return GetValue(CommandProperty); }
-            set { SetValue(CommandProperty, value); }
+            get { return _command; }
+            set { SetAndRaise(CommandProperty, ref _command, value); }
         }
 
         /// <summary>
@@ -134,6 +141,12 @@ namespace Avalonia.Controls
             set { SetValue(IsDefaultProperty, value); }
         }
 
+        public bool IsPressed
+        {
+            get { return GetValue(IsPressedProperty); }
+            private set { SetValue(IsPressedProperty, value); }
+        }
+
         /// <inheritdoc/>
         protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
         {
@@ -141,12 +154,44 @@ namespace Avalonia.Controls
 
             if (IsDefault)
             {
-                var inputElement = e.Root as IInputElement;
-
-                if (inputElement != null)
+                if (e.Root is IInputElement inputElement)
                 {
                     ListenForDefault(inputElement);
                 }
+            }
+        }
+
+        /// <inheritdoc/>
+        protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+        {
+            base.OnDetachedFromVisualTree(e);
+
+            if (IsDefault)
+            {
+                if (e.Root is IInputElement inputElement)
+                {
+                    StopListeningForDefault(inputElement);
+                }
+            }
+        }
+
+        protected override void OnAttachedToLogicalTree(LogicalTreeAttachmentEventArgs e)
+        {
+            base.OnAttachedToLogicalTree(e);
+
+            if (Command != null)
+            {
+                Command.CanExecuteChanged += CanExecuteChanged;
+            }
+        }
+
+        protected override void OnDetachedFromLogicalTree(LogicalTreeAttachmentEventArgs e)
+        {
+            base.OnDetachedFromLogicalTree(e);
+
+            if (Command != null)
+            {
+                Command.CanExecuteChanged -= CanExecuteChanged;
             }
         }
 
@@ -155,16 +200,16 @@ namespace Avalonia.Controls
         {
             if (e.Key == Key.Enter)
             {
-                RaiseClickEvent();
+                OnClick();
                 e.Handled = true;
             }
             else if (e.Key == Key.Space)
             {
                 if (ClickMode == ClickMode.Press)
                 {
-                    RaiseClickEvent();
+                    OnClick();
                 }
-
+                IsPressed = true;
                 e.Handled = true;
             }
 
@@ -178,36 +223,26 @@ namespace Avalonia.Controls
             {
                 if (ClickMode == ClickMode.Release)
                 {
-                    RaiseClickEvent();
+                    OnClick();
                 }
-
+                IsPressed = false;
                 e.Handled = true;
-            }
-        }
-
-        /// <inheritdoc/>
-        protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
-        {
-            base.OnDetachedFromVisualTree(e);
-
-            if (IsDefault)
-            {
-                var inputElement = e.Root as IInputElement;
-
-                if (inputElement != null)
-                {
-                    StopListeningForDefault(inputElement);
-                }
             }
         }
 
         /// <summary>
         /// Invokes the <see cref="Click"/> event.
         /// </summary>
-        /// <param name="e">The event args.</param>
-        protected virtual void OnClick(RoutedEventArgs e)
+        protected virtual void OnClick()
         {
-            Command?.Execute(CommandParameter);
+            var e = new RoutedEventArgs(ClickEvent);
+            RaiseEvent(e);
+
+            if (!e.Handled && Command?.CanExecute(CommandParameter) == true)
+            {
+                Command.Execute(CommandParameter);
+                e.Handled = true;
+            }
         }
 
         /// <inheritdoc/>
@@ -215,28 +250,47 @@ namespace Avalonia.Controls
         {
             base.OnPointerPressed(e);
 
-            PseudoClasses.Add(":pressed");
-            e.Device.Capture(this);
-            e.Handled = true;
-
-            if (ClickMode == ClickMode.Press)
+            if (e.MouseButton == MouseButton.Left)
             {
-                RaiseClickEvent();
+                e.Device.Capture(this);
+                IsPressed = true;
+                e.Handled = true;
+
+                if (ClickMode == ClickMode.Press)
+                {
+                    OnClick();
+                }
             }
         }
 
         /// <inheritdoc/>
-        protected override void OnPointerReleased(PointerEventArgs e)
+        protected override void OnPointerReleased(PointerReleasedEventArgs e)
         {
             base.OnPointerReleased(e);
 
-            e.Device.Capture(null);
-            PseudoClasses.Remove(":pressed");
-            e.Handled = true;
-
-            if (ClickMode == ClickMode.Release && Classes.Contains(":pointerover"))
+            if (IsPressed && e.MouseButton == MouseButton.Left)
             {
-                RaiseClickEvent();
+                e.Device.Capture(null);
+                IsPressed = false;
+                e.Handled = true;
+
+                if (ClickMode == ClickMode.Release &&
+                    this.GetVisualsAt(e.GetPosition(this)).Any(c => this == c || this.IsVisualAncestorOf(c)))
+                {
+                    OnClick();
+                }
+            }
+        }
+
+        protected override void UpdateDataValidation(AvaloniaProperty property, BindingNotification status)
+        {
+            base.UpdateDataValidation(property, status);
+            if (property == CommandProperty)
+            {
+                if (status?.ErrorType == BindingErrorType.Error)
+                {
+                    IsEnabled = false;
+                }
             }
         }
 
@@ -246,21 +300,19 @@ namespace Avalonia.Controls
         /// <param name="e">The event args.</param>
         private static void CommandChanged(AvaloniaPropertyChangedEventArgs e)
         {
-            var button = e.Sender as Button;
-
-            if (button != null)
+            if (e.Sender is Button button)
             {
-                var oldCommand = e.OldValue as ICommand;
-                var newCommand = e.NewValue as ICommand;
-
-                if (oldCommand != null)
+                if (((ILogical)button).IsAttachedToLogicalTree)
                 {
-                    oldCommand.CanExecuteChanged -= button.CanExecuteChanged;
-                }
+                    if (e.OldValue is ICommand oldCommand)
+                    {
+                        oldCommand.CanExecuteChanged -= button.CanExecuteChanged;
+                    }
 
-                if (newCommand != null)
-                {
-                    newCommand.CanExecuteChanged += button.CanExecuteChanged;
+                    if (e.NewValue is ICommand newCommand)
+                    {
+                        newCommand.CanExecuteChanged += button.CanExecuteChanged;
+                    }
                 }
 
                 button.CanExecuteChanged(button, EventArgs.Empty);
@@ -275,9 +327,8 @@ namespace Avalonia.Controls
         {
             var button = e.Sender as Button;
             var isDefault = (bool)e.NewValue;
-            var inputRoot = button.VisualRoot as IInputElement;
 
-            if (inputRoot != null)
+            if (button?.VisualRoot is IInputElement inputRoot)
             {
                 if (isDefault)
                 {
@@ -321,19 +372,6 @@ namespace Avalonia.Controls
         }
 
         /// <summary>
-        /// Raises the <see cref="Click"/> event.
-        /// </summary>
-        private void RaiseClickEvent()
-        {
-            RoutedEventArgs click = new RoutedEventArgs
-            {
-                RoutedEvent = ClickEvent,
-            };
-
-            RaiseEvent(click);
-        }
-
-        /// <summary>
         /// Called when a key is pressed on the input root and the button <see cref="IsDefault"/>.
         /// </summary>
         /// <param name="sender">The event sender.</param>
@@ -342,7 +380,7 @@ namespace Avalonia.Controls
         {
             if (e.Key == Key.Enter && IsVisible && IsEnabled)
             {
-                RaiseClickEvent();
+                OnClick();
             }
         }
     }

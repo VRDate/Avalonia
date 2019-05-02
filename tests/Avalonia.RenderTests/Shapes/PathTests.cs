@@ -7,14 +7,13 @@ using Avalonia.Layout;
 using Avalonia.Media;
 using Xunit;
 
-#if AVALONIA_CAIRO
-namespace Avalonia.Cairo.RenderTests.Shapes
-#elif AVALONIA_SKIA
+#if AVALONIA_SKIA
 namespace Avalonia.Skia.RenderTests
 #else
 namespace Avalonia.Direct2D1.RenderTests.Shapes
 #endif
 {
+    using System.Threading.Tasks;
     using Avalonia.Collections;
 
     public class PathTests : TestBase
@@ -24,8 +23,223 @@ namespace Avalonia.Direct2D1.RenderTests.Shapes
         {
         }
 
+
         [Fact]
-        public void Path_100px_Triangle_Centered()
+        public async Task Line_Absolute()
+        {
+            Decorator target = new Decorator
+            {
+                Width = 200,
+                Height = 200,
+                Child = new Path
+                {
+                    Stroke = Brushes.Red,
+                    StrokeThickness = 1,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Data = StreamGeometry.Parse("M 10,190 L 190,10 M0,0M200,200"),
+                }
+            };
+
+            await RenderToFile(target);
+            CompareImages();
+        }
+        
+        [Fact]
+        public async Task Line_Relative()
+        {
+            Decorator target = new Decorator
+            {
+                Width = 200,
+                Height = 200,
+                Child = new Path
+                {
+                    Stroke = Brushes.Red,
+                    StrokeThickness = 1,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Data = StreamGeometry.Parse("M10,190 l190,-190 M0,0M200,200"),
+                }
+            };
+
+            await RenderToFile(target);
+            CompareImages();
+        }
+        
+        [Fact]
+        public async Task HorizontalLine_Absolute()
+        {
+            Decorator target = new Decorator
+            {
+                Width = 200,
+                Height = 200,
+                Child = new Path
+                {
+                    Stroke = Brushes.Red,
+                    StrokeThickness = 1,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Data = StreamGeometry.Parse("M190,100 H10 M0,0M200,200"),
+                }
+            };
+
+            await RenderToFile(target);
+            CompareImages();
+        }
+        
+        [Fact]
+        public async Task HorizontalLine_Relative()
+        {
+            Decorator target = new Decorator
+            {
+                Width = 200,
+                Height = 200,
+                Child = new Path
+                {
+                    Stroke = Brushes.Red,
+                    StrokeThickness = 1,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Data = StreamGeometry.Parse("M190,100 h-180 M0,0M200,200"),
+                }
+            };
+
+            await RenderToFile(target);
+            CompareImages();
+        }
+        
+        [Fact]
+        public async Task VerticalLine_Absolute()
+        {
+            Decorator target = new Decorator
+            {
+                Width = 200,
+                Height = 200,
+                Child = new Path
+                {
+                    Stroke = Brushes.Red,
+                    StrokeThickness = 1,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Data = StreamGeometry.Parse("M100,190 V10 M0,0M200,200"),
+                }
+            };
+
+            await RenderToFile(target);
+            CompareImages();
+        }
+        
+        [Fact]
+        public async Task VerticalLine_Relative()
+        {
+            Decorator target = new Decorator
+            {
+                Width = 200,
+                Height = 200,
+                Child = new Path
+                {
+                    Stroke = Brushes.Red,
+                    StrokeThickness = 1,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Data = StreamGeometry.Parse("M100,190 V-180 M0,0M200,200"),
+                }
+            };
+
+            await RenderToFile(target);
+            CompareImages();
+        }
+        
+        [Fact]
+        public async Task CubicBezier_Absolute()
+        {
+            Decorator target = new Decorator
+            {
+                Width = 200,
+                Height = 200,
+                Child = new Path
+                {
+                    Fill = Brushes.Gray,
+                    Stroke = Brushes.Red,
+                    StrokeThickness = 1,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Data = StreamGeometry.Parse("M190,0 C10,10 190,190 10,190 M0,0M200,200"),
+                }
+            };
+
+            await RenderToFile(target);
+            CompareImages();
+        }
+        
+        [Fact]
+        public async Task CubicBezier_Relative()
+        {
+            Decorator target = new Decorator
+            {
+                Width = 200,
+                Height = 200,
+                Child = new Path
+                {
+                    Fill = Brushes.Gray,
+                    Stroke = Brushes.Red,
+                    StrokeThickness = 1,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Data = StreamGeometry.Parse("M190,0 c-180,10 0,190 -180,190 M0,0M200,200"),
+                }
+            };
+
+            await RenderToFile(target);
+            CompareImages();
+        }
+        
+        [Fact]
+        public async Task Arc_Absolute()
+        {
+            Decorator target = new Decorator
+            {
+                Width = 200,
+                Height = 200,
+                Child = new Path
+                {
+                    Fill = Brushes.Gray,
+                    Stroke = Brushes.Red,
+                    StrokeThickness = 1,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Data = StreamGeometry.Parse("M190,100 A90,90 0 1,0 10,100  M0,0M200,200"),
+                }
+            };
+
+            await RenderToFile(target);
+            CompareImages();
+        }
+        
+        [Fact]
+        public async Task Arc_Relative()
+        {
+            Decorator target = new Decorator
+            {
+                Width = 200,
+                Height = 200,
+                Child = new Path
+                {
+                    Fill = Brushes.Gray,
+                    Stroke = Brushes.Red,
+                    StrokeThickness = 1,
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center,
+                    Data = StreamGeometry.Parse("M190,100 a90,90 0 1,0 -180,0  M0,0M200,200"),
+                }
+            };
+
+            await RenderToFile(target);
+            CompareImages();
+        }
+
+        [Fact]
+        public async Task Path_100px_Triangle_Centered()
         {
             Decorator target = new Decorator
             {
@@ -42,15 +256,12 @@ namespace Avalonia.Direct2D1.RenderTests.Shapes
                 }
             };
 
-            RenderToFile(target);
+            await RenderToFile(target);
             CompareImages();
         }
-#if AVALONIA_SKIA_SKIP_FAIL
-        [Fact(Skip = "Waiting for https://github.com/mono/SkiaSharp/pull/63")]
-#else
+
         [Fact]
-#endif
-        public void Path_Tick_Scaled()
+        public async Task Path_Tick_Scaled()
         {
             Decorator target = new Decorator
             {
@@ -68,16 +279,12 @@ namespace Avalonia.Direct2D1.RenderTests.Shapes
                 }
             };
 
-            RenderToFile(target);
+            await RenderToFile(target);
             CompareImages();
         }
 
-#if AVALONIA_SKIA_SKIP_FAIL
-        [Fact(Skip = "Waiting for https://github.com/mono/SkiaSharp/pull/63")]
-#else
         [Fact]
-#endif
-        public void Path_Tick_Scaled_Stroke_8px()
+        public async Task Path_Tick_Scaled_Stroke_8px()
         {
             Decorator target = new Decorator
             {
@@ -95,12 +302,12 @@ namespace Avalonia.Direct2D1.RenderTests.Shapes
                 }
             };
 
-            RenderToFile(target);
+            await RenderToFile(target);
             CompareImages();
         }
 
         [Fact]
-        public void Path_Expander_With_Border()
+        public async Task Path_Expander_With_Border()
         {
             Decorator target = new Decorator
             {
@@ -109,7 +316,7 @@ namespace Avalonia.Direct2D1.RenderTests.Shapes
                 Child = new Border
                 {
                     BorderBrush = Brushes.Red,
-                    BorderThickness = 1,
+                    BorderThickness = new Thickness(1),
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
                     Child = new Path
@@ -123,18 +330,12 @@ namespace Avalonia.Direct2D1.RenderTests.Shapes
                 }
             };
 
-            RenderToFile(target);
+            await RenderToFile(target);
             CompareImages();
         }
 
-#if AVALONIA_CAIRO
-        [Fact(Skip = "Path with StrokeDashCap, StrokeStartLineCap, StrokeEndLineCap rendering is not implemented in Cairo yet")]
-#elif AVALONIA_SKIA_SKIP_FAIL
-        [Fact(Skip = "FIXME")]
-#else
         [Fact]
-#endif
-        public void Path_With_PenLineCap()
+        public async Task Path_With_PenLineCap()
         {
             Decorator target = new Decorator
             {
@@ -146,15 +347,36 @@ namespace Avalonia.Direct2D1.RenderTests.Shapes
                     StrokeThickness = 10,
                     HorizontalAlignment = HorizontalAlignment.Center,
                     VerticalAlignment = VerticalAlignment.Center,
-                    StrokeDashCap = PenLineCap.Triangle,
                     StrokeDashArray = new AvaloniaList<double>(3, 1),
-                    StrokeStartLineCap = PenLineCap.Round,
-                    StrokeEndLineCap = PenLineCap.Square,
+                    StrokeLineCap = PenLineCap.Round,
                     Data = StreamGeometry.Parse("M 20,20 L 180,180"),
                 }
             };
 
-            RenderToFile(target);
+            await RenderToFile(target);
+            CompareImages();
+        }
+
+        [Fact]
+        public async Task Path_With_Rotated_Geometry()
+        {
+            var target = new Border
+            {
+                Width = 200,
+                Height = 200,
+                Background = Brushes.White,
+                Child = new Path
+                {
+                    Fill = Brushes.Red,
+                    Data = new RectangleGeometry
+                    {
+                        Rect = new Rect(50, 50, 100, 100),
+                        Transform = new RotateTransform(45),
+                    }
+                }
+            };
+
+            await RenderToFile(target);
             CompareImages();
         }
     }

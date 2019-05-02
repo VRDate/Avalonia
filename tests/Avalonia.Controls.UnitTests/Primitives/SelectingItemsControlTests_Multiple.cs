@@ -10,7 +10,7 @@ using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
-using Avalonia.Markup.Xaml.Data;
+using Avalonia.Markup.Data;
 using Xunit;
 
 namespace Avalonia.Controls.UnitTests.Primitives
@@ -76,7 +76,7 @@ namespace Avalonia.Controls.UnitTests.Primitives
             target.SelectedItems = new AvaloniaList<object>();
 
             Assert.Equal(-1, target.SelectedIndex);
-            Assert.Equal(null, target.SelectedItem);
+            Assert.Null(target.SelectedItem);
         }
 
         [Fact]
@@ -540,6 +540,35 @@ namespace Avalonia.Controls.UnitTests.Primitives
 
             Assert.True(called);
         }
+
+        [Fact]
+        public void Replacing_SelectedItems_Should_Raise_SelectionChanged_With_CorrectItems()
+        {
+            var items = new[] { "foo", "bar", "baz" };
+
+            var target = new TestSelector
+            {
+                Items = items,
+                Template = Template(),
+                SelectedItem = "bar",
+            };
+
+            var called = false;
+
+            target.SelectionChanged += (s, e) =>
+            {
+                Assert.Equal(new[] { "foo",}, e.AddedItems.Cast<object>());
+                Assert.Equal(new[] { "bar" }, e.RemovedItems.Cast<object>());
+                called = true;
+            };
+
+            target.ApplyTemplate();
+            target.Presenter.ApplyTemplate();
+            target.SelectedItems[0] = "foo";
+
+            Assert.True(called);
+        }
+
 
         private FuncControlTemplate Template()
         {

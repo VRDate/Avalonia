@@ -1,10 +1,7 @@
 // Copyright (c) The Avalonia Project. All rights reserved.
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
-using System;
 using System.ComponentModel;
-using System.Linq;
-using System.Reactive.Linq;
 using System.Runtime.CompilerServices;
 using Avalonia.Input.Raw;
 using Avalonia.Interactivity;
@@ -15,14 +12,6 @@ namespace Avalonia.Input
     public class KeyboardDevice : IKeyboardDevice, INotifyPropertyChanged
     {
         private IInputElement _focusedElement;
-
-        public KeyboardDevice()
-        {
-            InputManager.Process
-                .OfType<RawInputEventArgs>()
-                .Where(e => e.Device == this && !e.Handled)
-                .Subscribe(ProcessRawEvent);
-        }
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -54,13 +43,13 @@ namespace Avalonia.Input
             if (element != FocusedElement)
             {
                 var interactive = FocusedElement as IInteractive;
+                FocusedElement = element;
 
                 interactive?.RaiseEvent(new RoutedEventArgs
                 {
                     RoutedEvent = InputElement.LostFocusEvent,
                 });
 
-                FocusedElement = element;
                 interactive = element as IInteractive;
 
                 interactive?.RaiseEvent(new GotFocusEventArgs
@@ -77,8 +66,10 @@ namespace Avalonia.Input
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
 
-        private void ProcessRawEvent(RawInputEventArgs e)
+        public void ProcessRawEvent(RawInputEventArgs e)
         {
+            if(e.Handled)
+                return;
             IInputElement element = FocusedElement;
 
             if (element != null)

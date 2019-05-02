@@ -1,7 +1,6 @@
 // Copyright (c) The Avalonia Project. All rights reserved.
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Avalonia.Media;
@@ -10,60 +9,52 @@ using DWrite = SharpDX.DirectWrite;
 
 namespace Avalonia.Direct2D1.Media
 {
-    public class FormattedTextImpl : IFormattedTextImpl
+    internal class FormattedTextImpl : IFormattedTextImpl
     {
         public FormattedTextImpl(
             string text,
-            string fontFamily,
-            double fontSize,
-            FontStyle fontStyle,
+            Typeface typeface,
             TextAlignment textAlignment,
-            FontWeight fontWeight,
-            TextWrapping wrapping)
+            TextWrapping wrapping,
+            Size constraint,
+            IReadOnlyList<FormattedTextStyleSpan> spans)
         {
-            var factory = AvaloniaLocator.Current.GetService<DWrite.Factory>();
+            Text = text;
 
-            using (var format = new DWrite.TextFormat(
-                factory,
-                fontFamily,
-                (DWrite.FontWeight)fontWeight,
-                (DWrite.FontStyle)fontStyle,
-                (float)fontSize))
+            using (var textFormat = Direct2D1FontCollectionCache.GetTextFormat(typeface))
             {
-                format.WordWrapping = wrapping == TextWrapping.Wrap ? 
-                    DWrite.WordWrapping.Wrap : DWrite.WordWrapping.NoWrap;
+                textFormat.WordWrapping =
+                    wrapping == TextWrapping.Wrap ? DWrite.WordWrapping.Wrap : DWrite.WordWrapping.NoWrap;
 
                 TextLayout = new DWrite.TextLayout(
-                    factory,
-                    text ?? string.Empty,
-                    format,
-                    float.MaxValue,
-                    float.MaxValue);
+                                 Direct2D1Platform.DirectWriteFactory,
+                                 Text ?? string.Empty,
+                                 textFormat,
+                                 (float)constraint.Width,
+                                 (float)constraint.Height)
+                             {
+                                 TextAlignment = textAlignment.ToDirect2D()
+                             };
             }
 
-            TextLayout.TextAlignment = textAlignment.ToDirect2D();
+            if (spans != null)
+            {
+                foreach (var span in spans)
+                {
+                    ApplySpan(span);
+                }
+            }
+
+            Bounds = Measure();
         }
 
-        public Size Constraint
-        {
-            get
-            {
-                return new Size(TextLayout.MaxWidth, TextLayout.MaxHeight);
-            }
+        public Size Constraint => new Size(TextLayout.MaxWidth, TextLayout.MaxHeight);
 
-            set
-            {
-                TextLayout.MaxWidth = (float)value.Width;
-                TextLayout.MaxHeight = (float)value.Height;
-            }
-        }
+        public Rect Bounds { get; }
+
+        public string Text { get; }
 
         public DWrite.TextLayout TextLayout { get; }
-
-        public void Dispose()
-        {
-            TextLayout.Dispose();
-        }
 
         public IEnumerable<FormattedTextLine> GetLines()
         {
@@ -73,14 +64,11 @@ namespace Avalonia.Direct2D1.Media
 
         public TextHitTestResult HitTestPoint(Point point)
         {
-            SharpDX.Mathematics.Interop.RawBool isTrailingHit;
-            SharpDX.Mathematics.Interop.RawBool isInside;
-
             var result = TextLayout.HitTestPoint(
                 (float)point.X,
                 (float)point.Y,
-                out isTrailingHit,
-                out isInside);
+                out var isTrailingHit,
+                out var isInside);
 
             return new TextHitTestResult
             {
@@ -92,14 +80,7 @@ namespace Avalonia.Direct2D1.Media
 
         public Rect HitTestTextPosition(int index)
         {
-            float x;
-            float y;
-
-            var result = TextLayout.HitTestTextPosition(
-                index,
-                false,
-                out x,
-                out y);
+            var result = TextLayout.HitTestTextPosition(index, false, out _, out _);
 
             return new Rect(result.Left, result.Top, result.Width, result.Height);
         }
@@ -110,9 +91,23 @@ namespace Avalonia.Direct2D1.Media
             return result.Select(x => new Rect(x.Left, x.Top, x.Width, x.Height));
         }
 
-        public Size Measure()
+        private void ApplySpan(FormattedTextStyleSpan span)
+        {
+            if (span.Length > 0)
+            {
+                if (span.ForegroundBrush != null)
+                {
+                    TextLayout.SetDrawingEffect(
+                        new BrushWrapper(span.ForegroundBrush.ToImmutable()),
+                        new DWrite.TextRange(span.StartIndex, span.Length));
+                }
+            }
+        }
+
+        private Rect Measure()
         {
             var metrics = TextLayout.Metrics;
+
             var width = metrics.WidthIncludingTrailingWhitespace;
 
             if (float.IsNaN(width))
@@ -120,14 +115,11 @@ namespace Avalonia.Direct2D1.Media
                 width = metrics.Width;
             }
 
-            return new Size(width, TextLayout.Metrics.Height);
-        }
-
-        public void SetForegroundBrush(IBrush brush, int startIndex, int count)
-        {
-            TextLayout.SetDrawingEffect(
-                new BrushWrapper(brush),
-                new DWrite.TextRange(startIndex, count));
+            return new Rect(
+                TextLayout.Metrics.Left,
+                TextLayout.Metrics.Top,
+                width,
+                TextLayout.Metrics.Height);
         }
     }
 }

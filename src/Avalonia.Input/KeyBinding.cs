@@ -1,8 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Input;
 
 namespace Avalonia.Input
@@ -10,7 +5,7 @@ namespace Avalonia.Input
     public class KeyBinding : AvaloniaObject
     {
         public static readonly StyledProperty<ICommand> CommandProperty =
-            AvaloniaProperty.Register<KeyBinding, ICommand>("Command");
+            AvaloniaProperty.Register<KeyBinding, ICommand>(nameof(Command));
 
         public ICommand Command
         {
@@ -19,7 +14,7 @@ namespace Avalonia.Input
         }
 
         public static readonly StyledProperty<object> CommandParameterProperty =
-            AvaloniaProperty.Register<KeyBinding, object>("CommandParameter");
+            AvaloniaProperty.Register<KeyBinding, object>(nameof(CommandParameter));
 
         public object CommandParameter
         {
@@ -28,7 +23,7 @@ namespace Avalonia.Input
         }
 
         public static readonly StyledProperty<KeyGesture> GestureProperty =
-            AvaloniaProperty.Register<KeyBinding, KeyGesture>("Gesture");
+            AvaloniaProperty.Register<KeyBinding, KeyGesture>(nameof(Gesture));
 
         public KeyGesture Gesture
         {

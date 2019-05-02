@@ -3,7 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reactive.Disposables;
 using System.Reactive.Linq;
+using Avalonia.Animation;
+using Avalonia.Controls;
 using Avalonia.Metadata;
 
 namespace Avalonia.Styling
@@ -11,12 +14,17 @@ namespace Avalonia.Styling
     /// <summary>
     /// Defines a style.
     /// </summary>
-    public class Style : IStyle
+    public class Style : AvaloniaObject, IStyle, ISetStyleParent
     {
-        private static Dictionary<IStyleable, List<IDisposable>> _applied = 
-            new Dictionary<IStyleable, List<IDisposable>>();
+        private static Dictionary<IStyleable, CompositeDisposable> _applied =
+            new Dictionary<IStyleable, CompositeDisposable>();
+        private IResourceNode _parent;
 
-        private Dictionary<string, object> _resources;
+        private CompositeDisposable _subscriptions;
+
+        private IResourceDictionary _resources;
+
+        private IList<IAnimation> _animations;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Style"/> class.
@@ -34,99 +42,139 @@ namespace Avalonia.Styling
             Selector = selector(null);
         }
 
+        /// <inheritdoc/>
+        public event EventHandler<ResourcesChangedEventArgs> ResourcesChanged;
+
         /// <summary>
         /// Gets or sets a dictionary of style resources.
         /// </summary>
-        public IDictionary<string, object> Resources
+        public IResourceDictionary Resources
         {
-            get
-            {
-                if (_resources == null)
-                {
-                    _resources = new Dictionary<string, object>();
-                }
-
-                return _resources;
-            }
-
+            get => _resources ?? (Resources = new ResourceDictionary());
             set
             {
-                var resources = Resources;
+                Contract.Requires<ArgumentNullException>(value != null);
 
-                foreach (var i in value)
+                var hadResources = false;
+
+                if (_resources != null)
                 {
-                    resources.Add(i);
+                    hadResources = _resources.Count > 0;
+                    _resources.ResourcesChanged -= ResourceDictionaryChanged;
+                }
+
+                _resources = value;
+                _resources.ResourcesChanged += ResourceDictionaryChanged;
+
+                if (hadResources || _resources.Count > 0)
+                {
+                    ((ISetStyleParent)this).NotifyResourcesChanged(new ResourcesChangedEventArgs());
                 }
             }
         }
 
         /// <summary>
-        /// Gets or sets style's selector.
+        /// Gets or sets the style's selector.
         /// </summary>
         public Selector Selector { get; set; }
 
         /// <summary>
-        /// Gets or sets style's setters.
+        /// Gets or sets the style's setters.
         /// </summary>
         [Content]
-        public IEnumerable<ISetter> Setters { get; set; } = new List<ISetter>();
+        public IList<ISetter> Setters { get; set; } = new List<ISetter>();
 
-        /// <summary>
-        /// Attaches the style to a control if the style's selector matches.
-        /// </summary>
-        /// <param name="control">The control to attach to.</param>
-        /// <param name="container">
-        /// The control that contains this style. May be null.
-        /// </param>
-        public void Attach(IStyleable control, IStyleHost container)
+        public IList<IAnimation> Animations
+        {
+            get
+            {
+                return _animations ?? (_animations = new List<IAnimation>());
+            }
+        }
+
+        private CompositeDisposable Subscriptions
+        {
+            get
+            {
+                return _subscriptions ?? (_subscriptions = new CompositeDisposable(2));
+            }
+        }
+
+        /// <inheritdoc/>
+        IResourceNode IResourceNode.ResourceParent => _parent;
+
+        /// <inheritdoc/>
+        bool IResourceProvider.HasResources => _resources?.Count > 0;
+
+        /// <inheritdoc/>
+        public bool Attach(IStyleable control, IStyleHost container)
         {
             if (Selector != null)
             {
-                var description = "Style " + Selector.ToString();
                 var match = Selector.Match(control);
 
-                if (match.ImmediateResult != false)
+                if (match.IsMatch)
                 {
-                    var subs = GetSubscriptions(control);
+                    var controlSubscriptions = GetSubscriptions(control);
+                    
+                    var subs = new CompositeDisposable(Setters.Count + Animations.Count);
+
+                    if (control is Animatable animatable)
+                    {
+                        foreach (var animation in Animations)
+                        {
+                            var obsMatch = match.Activator;
+
+                            if (match.Result == SelectorMatchResult.AlwaysThisType ||
+                                match.Result == SelectorMatchResult.AlwaysThisInstance)
+                            {
+                                obsMatch = Observable.Return(true);
+                            }
+
+                            var sub = animation.Apply(animatable, null, obsMatch);
+                            subs.Add(sub);
+                        } 
+                    }
 
                     foreach (var setter in Setters)
                     {
-                        var sub = setter.Apply(this, control, match.ObservableResult);
+                        var sub = setter.Apply(this, control, match.Activator);
                         subs.Add(sub);
                     }
+
+                    controlSubscriptions.Add(subs);
+                    controlSubscriptions.Add(Disposable.Create(() => Subscriptions.Remove(subs)));
+                    Subscriptions.Add(subs);
                 }
+
+                return match.Result != SelectorMatchResult.NeverThisType;
             }
             else if (control == container)
             {
-                var subs = GetSubscriptions(control);
+                var controlSubscriptions = GetSubscriptions(control);
+
+                var subs = new CompositeDisposable(Setters.Count);
 
                 foreach (var setter in Setters)
                 {
                     var sub = setter.Apply(this, control, null);
                     subs.Add(sub);
                 }
+
+                controlSubscriptions.Add(subs);
+                controlSubscriptions.Add(Disposable.Create(() => Subscriptions.Remove(subs)));
+                Subscriptions.Add(subs);
+                return true;
             }
+
+            return false;
         }
 
-        /// <summary>
-        /// Tries to find a named resource within the style.
-        /// </summary>
-        /// <param name="name">The resource name.</param>
-        /// <returns>
-        /// The resource if found, otherwise <see cref="AvaloniaProperty.UnsetValue"/>.
-        /// </returns>
-        public object FindResource(string name)
+        /// <inheritdoc/>
+        public bool TryGetResource(string key, out object result)
         {
-            object result = null;
-
-            if (_resources?.TryGetValue(name, out result) == true)
-            {
-                return result;
-            }
-            else
-            {
-                return AvaloniaProperty.UnsetValue;
-            }
+            result = null;
+            return _resources?.TryGetResource(key, out result) ?? false;
         }
 
         /// <summary>
@@ -145,13 +193,39 @@ namespace Avalonia.Styling
             }
         }
 
-        private static List<IDisposable> GetSubscriptions(IStyleable control)
+        /// <inheritdoc/>
+        void ISetStyleParent.NotifyResourcesChanged(ResourcesChangedEventArgs e)
         {
-            List<IDisposable> subscriptions;
+            ResourcesChanged?.Invoke(this, e);
+        }
 
-            if (!_applied.TryGetValue(control, out subscriptions))
+        /// <inheritdoc/>
+        void ISetStyleParent.SetParent(IResourceNode parent)
+        {
+            if (_parent != null && parent != null)
             {
-                subscriptions = new List<IDisposable>(2);
+                throw new InvalidOperationException("The Style already has a parent.");
+            }
+
+            if (parent == null)
+            {
+                Detach();
+            }
+
+            _parent = parent;
+        }
+
+        public void Detach()
+        {
+            _subscriptions?.Dispose();
+            _subscriptions = null;
+        }
+
+        private static CompositeDisposable GetSubscriptions(IStyleable control)
+        {
+            if (!_applied.TryGetValue(control, out var subscriptions))
+            {
+                subscriptions = new CompositeDisposable(3);
                 subscriptions.Add(control.StyleDetach.Subscribe(ControlDetach));
                 _applied.Add(control, subscriptions);
             }
@@ -160,7 +234,7 @@ namespace Avalonia.Styling
         }
 
         /// <summary>
-        /// Called when a control's <see cref="IStyleable.StyleDetach"/> is signalled to remove
+        /// Called when a control's <see cref="IStyleable.StyleDetach"/> is signaled to remove
         /// all applied styles.
         /// </summary>
         /// <param name="control">The control.</param>
@@ -168,12 +242,14 @@ namespace Avalonia.Styling
         {
             var subscriptions = _applied[control];
 
-            foreach (var subscription in subscriptions)
-            {
-                subscription.Dispose();
-            }
+            subscriptions.Dispose();
 
             _applied.Remove(control);
+        }
+
+        private void ResourceDictionaryChanged(object sender, ResourcesChangedEventArgs e)
+        {
+            ResourcesChanged?.Invoke(this, e);
         }
     }
 }

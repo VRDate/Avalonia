@@ -9,8 +9,10 @@ using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Layout;
+using Avalonia.Platform;
 using Avalonia.Rendering;
 using Avalonia.UnitTests;
+using Avalonia.VisualTree;
 using Xunit;
 
 namespace Avalonia.Controls.UnitTests.Presenters
@@ -110,8 +112,8 @@ namespace Avalonia.Controls.UnitTests.Presenters
             target.Arrange(new Rect(0, 0, 100, 100));
 
             var scroll = (ScrollContentPresenter)target.Parent;
-            Assert.Equal(new Size(0, 20), scroll.Extent);
-            Assert.Equal(new Size(0, 10), scroll.Viewport);
+            Assert.Equal(new Size(10, 20), scroll.Extent);
+            Assert.Equal(new Size(100, 10), scroll.Viewport);
         }
 
         [Fact]
@@ -194,6 +196,15 @@ namespace Avalonia.Controls.UnitTests.Presenters
         }
 
         [Fact]
+        public void Should_Not_Create_Virtualizer_Before_Panel()
+        {
+            var target = CreateTarget();
+
+            Assert.Null(target.Panel);
+            Assert.Null(target.Virtualizer);
+        }
+
+        [Fact]
         public void Changing_VirtualizationMode_None_To_Simple_Should_Update_Control()
         {
             var target = CreateTarget(mode: ItemVirtualizationMode.None);
@@ -203,7 +214,7 @@ namespace Avalonia.Controls.UnitTests.Presenters
             scroll.Arrange(new Rect(0, 0, 100, 100));
 
             Assert.Equal(20, target.Panel.Children.Count);
-            Assert.Equal(new Size(10, 200), scroll.Extent);
+            Assert.Equal(new Size(100, 200), scroll.Extent);
             Assert.Equal(new Size(100, 100), scroll.Viewport);
 
             target.VirtualizationMode = ItemVirtualizationMode.Simple;
@@ -211,20 +222,20 @@ namespace Avalonia.Controls.UnitTests.Presenters
             target.Arrange(new Rect(0, 0, 100, 100));
 
             Assert.Equal(10, target.Panel.Children.Count);
-            Assert.Equal(new Size(0, 20), scroll.Extent);
-            Assert.Equal(new Size(0, 10), scroll.Viewport);
+            Assert.Equal(new Size(10, 20), scroll.Extent);
+            Assert.Equal(new Size(100, 10), scroll.Viewport);
         }
 
         [Fact]
         public void Changing_VirtualizationMode_None_To_Simple_Should_Add_Correct_Number_Of_Controls()
         {
-            using (UnitTestApplication.Start(TestServices.RealLayoutManager))
+            using (UnitTestApplication.Start(new TestServices()))
             {
                 var target = CreateTarget(mode: ItemVirtualizationMode.None);
-                var scroll = (ScrollContentPresenter)target.Parent;
+                var scroll = (TestScroller)target.Parent;
 
-                scroll.Measure(new Size(100, 100));
-                scroll.Arrange(new Rect(0, 0, 100, 100));
+                scroll.Width = scroll.Height = 100;
+                scroll.LayoutManager.ExecuteInitialLayoutPass(scroll);
 
                 // Ensure than an intermediate measure pass doesn't add more controls than it
                 // should. This can happen if target gets measured with Size.Infinity which
@@ -236,7 +247,7 @@ namespace Avalonia.Controls.UnitTests.Presenters
                 };
 
                 target.VirtualizationMode = ItemVirtualizationMode.Simple;
-                LayoutManager.Instance.ExecuteLayoutPass();
+                ((ILayoutRoot)scroll.GetVisualRoot()).LayoutManager.ExecuteLayoutPass();
 
                 Assert.Equal(10, target.Panel.Children.Count);
             }
@@ -252,8 +263,8 @@ namespace Avalonia.Controls.UnitTests.Presenters
             scroll.Arrange(new Rect(0, 0, 100, 100));
 
             Assert.Equal(10, target.Panel.Children.Count);
-            Assert.Equal(new Size(0, 20), scroll.Extent);
-            Assert.Equal(new Size(0, 10), scroll.Viewport);
+            Assert.Equal(new Size(10, 20), scroll.Extent);
+            Assert.Equal(new Size(100, 10), scroll.Viewport);
 
             target.VirtualizationMode = ItemVirtualizationMode.None;
             target.Measure(new Size(100, 100));
@@ -265,7 +276,7 @@ namespace Avalonia.Controls.UnitTests.Presenters
             scroll.Arrange(new Rect(0, 0, 100, 100));
 
             Assert.Equal(20, target.Panel.Children.Count);
-            Assert.Equal(new Size(10, 200), scroll.Extent);
+            Assert.Equal(new Size(100, 200), scroll.Extent);
             Assert.Equal(new Size(100, 100), scroll.Viewport);
         }
 
@@ -280,6 +291,8 @@ namespace Avalonia.Controls.UnitTests.Presenters
 
             var scroller = new TestScroller
             {
+                CanHorizontallyScroll = false,
+                CanVerticallyScroll = true,
                 Content = result = new TestItemsPresenter(useContainers)
                 {
                     Items = items,
@@ -312,19 +325,22 @@ namespace Avalonia.Controls.UnitTests.Presenters
             });
         }
 
-        private class TestScroller : ScrollContentPresenter, IRenderRoot
+        private class TestScroller : ScrollContentPresenter, IRenderRoot, ILayoutRoot
         {
-            public IRenderQueueManager RenderQueueManager { get; }
+            public IRenderer Renderer { get; }
+            public Size ClientSize { get; }
+            public double RenderScaling => 1;
 
-            public Point PointToClient(Point point)
-            {
-                throw new NotImplementedException();
-            }
+            public Size MaxClientSize => Size.Infinity;
 
-            public Point PointToScreen(Point point)
-            {
-                throw new NotImplementedException();
-            }
+            public double LayoutScaling => 1;
+
+            public ILayoutManager LayoutManager { get; } = new LayoutManager();
+
+            public IRenderTarget CreateRenderTarget() => throw new NotImplementedException();
+            public void Invalidate(Rect rect) => throw new NotImplementedException();
+            public Point PointToClient(PixelPoint p) => throw new NotImplementedException();
+            public PixelPoint PointToScreen(Point p) => throw new NotImplementedException();
         }
 
         private class TestItemsPresenter : ItemsPresenter

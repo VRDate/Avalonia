@@ -1,3 +1,5 @@
+using System;
+using System.ComponentModel;
 using Android.Content;
 using Android.Runtime;
 using Android.Views;
@@ -7,12 +9,10 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Raw;
 using Avalonia.Platform;
-using System;
-using System.ComponentModel;
 
 namespace Avalonia.Android.Platform.Specific.Helpers
 {
-    public class AndroidKeyboardEventsHelper<TView> : IDisposable where TView : View, IWindowImpl, IAndroidView
+    public class AndroidKeyboardEventsHelper<TView> : IDisposable where TView :ITopLevelImpl, IAndroidView
     {
         private TView _view;
         private IInputElement _lastFocusedElement;
@@ -90,7 +90,7 @@ namespace Avalonia.Android.Platform.Specific.Helpers
 
         private void TryShowHideKeyboard(IInputElement element, bool value)
         {
-            var input = _view.Context.GetSystemService(Context.InputMethodService).JavaCast<InputMethodManager>();
+            var input = _view.View.Context.GetSystemService(Context.InputMethodService).JavaCast<InputMethodManager>();
 
             if (value)
             {
@@ -102,7 +102,7 @@ namespace Avalonia.Android.Platform.Specific.Helpers
             else
             {
                 //hide keyboard
-                input.HideSoftInputFromWindow(_view.WindowToken, HideSoftInputFlags.None);
+                input.HideSoftInputFromWindow(_view.View.WindowToken, HideSoftInputFlags.None);
             }
         }
 
@@ -120,7 +120,7 @@ namespace Avalonia.Android.Platform.Specific.Helpers
             _lastFocusedElement = element;
         }
 
-        public void ActivateAutoShowKeybord()
+        public void ActivateAutoShowKeyboard()
         {
             var kbDevice = (KeyboardDevice.Instance as INotifyPropertyChanged);
 

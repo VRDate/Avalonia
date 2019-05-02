@@ -3,56 +3,34 @@
 
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Reflection;
+using System.Runtime.Serialization;
 using System.Text;
-using OmniXaml;
+using System.Xml.Linq;
+using Avalonia.Controls;
+using Avalonia.Markup.Data;
+using Avalonia.Markup.Xaml.PortableXaml;
 using Avalonia.Platform;
+using Portable.Xaml;
 
 namespace Avalonia.Markup.Xaml
 {
-    using Context;
-    using Controls;
-    using Data;
-    using OmniXaml.ObjectAssembler;
-    using System.Linq;
     /// <summary>
     /// Loads XAML for a avalonia application.
     /// </summary>
-    public class AvaloniaXamlLoader : XmlLoader
+    public class AvaloniaXamlLoader
     {
-        private static AvaloniaParserFactory s_parserFactory;
-        private static IInstanceLifeCycleListener s_lifeCycleListener = new AvaloniaLifeCycleListener();
-        private static Stack<Uri> s_uriStack = new Stack<Uri>();
+        public bool IsDesignMode { get; set; }
 
         /// <summary>
         /// Initializes a new instance of the <see cref="AvaloniaXamlLoader"/> class.
         /// </summary>
         public AvaloniaXamlLoader()
-            : this(GetParserFactory())
         {
         }
-
-        /// <summary>
-        /// Initializes a new instance of the <see cref="AvaloniaXamlLoader"/> class.
-        /// </summary>
-        /// <param name="xamlParserFactory">The parser factory to use.</param>
-        public AvaloniaXamlLoader(IParserFactory xamlParserFactory)
-            : base(xamlParserFactory)
-        {
-        }
-
-        /// <summary>
-        /// Gets the URI of the XAML file currently being loaded.
-        /// </summary>
-        /// <remarks>
-        /// TODO: Making this internal for now as I'm not sure that this is the correct
-        /// thing to do, but its needd by <see cref="StyleInclude"/> to get the URL of
-        /// the currently loading XAML file, as we can't use the OmniXAML parsing context
-        /// there. Maybe we need a way to inject OmniXAML context into the objects its
-        /// constructing?
-        /// </remarks>
-        internal static Uri UriContext => s_uriStack.Count > 0 ? s_uriStack.Peek() : null;
 
         /// <summary>
         /// Loads the XAML into a Avalonia component.
@@ -89,7 +67,7 @@ namespace Avalonia.Markup.Xaml
                     "Could not create IAssetLoader : maybe Application.RegisterServices() wasn't called?");
             }
 
-            foreach (var uri in GetUrisFor(type))
+            foreach (var uri in GetUrisFor(assetLocator, type))
             {
                 if (assetLocator.Exists(uri))
                 {
@@ -97,7 +75,14 @@ namespace Avalonia.Markup.Xaml
                     {
                         var initialize = rootInstance as ISupportInitialize;
                         initialize?.BeginInit();
-                        return Load(stream, rootInstance, uri);
+                        try
+                        {
+                            return Load(stream, type.Assembly, rootInstance, uri);
+                        }
+                        finally
+                        {
+                            initialize?.EndInit();
+                        }
                     }
                 }
             }
@@ -128,9 +113,18 @@ namespace Avalonia.Markup.Xaml
                     "Could not create IAssetLoader : maybe Application.RegisterServices() wasn't called?");
             }
 
-            using (var stream = assetLocator.Open(uri, baseUri))
+            var asset = assetLocator.OpenAndGetAssembly(uri, baseUri);
+            using (var stream = asset.stream)
             {
-                return Load(stream, rootInstance, uri);
+                var absoluteUri = uri.IsAbsoluteUri ? uri : new Uri(baseUri, uri);
+                try
+                {
+                    return Load(stream, asset.assembly, rootInstance, absoluteUri);
+                }
+                catch (Exception e)
+                {
+                    throw new XamlLoadException("Error loading xaml at " + absoluteUri + ": " + e.Message, e);
+                }
             }
         }
 
@@ -138,17 +132,18 @@ namespace Avalonia.Markup.Xaml
         /// Loads XAML from a string.
         /// </summary>
         /// <param name="xaml">The string containing the XAML.</param>
+        /// <param name="localAssembly">Default assembly for clr-namespace:</param>
         /// <param name="rootInstance">
         /// The optional instance into which the XAML should be loaded.
         /// </param>
         /// <returns>The loaded object.</returns>
-        public object Load(string xaml, object rootInstance = null)
+        public object Load(string xaml, Assembly localAssembly = null, object rootInstance = null)
         {
             Contract.Requires<ArgumentNullException>(xaml != null);
 
             using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(xaml)))
             {
-                return Load(stream, rootInstance);
+                return Load(stream, localAssembly, rootInstance);
             }
         }
 
@@ -156,70 +151,101 @@ namespace Avalonia.Markup.Xaml
         /// Loads XAML from a stream.
         /// </summary>
         /// <param name="stream">The stream containing the XAML.</param>
+        /// <param name="localAssembly">Default assembly for clr-namespace</param>
         /// <param name="rootInstance">
         /// The optional instance into which the XAML should be loaded.
         /// </param>
         /// <param name="uri">The URI of the XAML</param>
         /// <returns>The loaded object.</returns>
-        public object Load(Stream stream, object rootInstance = null, Uri uri = null)
+        public object Load(Stream stream, Assembly localAssembly, object rootInstance = null, Uri uri = null)
         {
-            try
+            var readerSettings = new XamlXmlReaderSettings()
             {
-                if (uri != null)
-                {
-                    s_uriStack.Push(uri);
-                }
+                BaseUri = uri,
+                LocalAssembly = localAssembly,
+                ProvideLineInfo = true,
+            };
 
-                var result = base.Load(stream, new Settings
-                {
-                    RootInstance = rootInstance,
-                    InstanceLifeCycleListener = s_lifeCycleListener,
-                    ParsingContext = new Dictionary<string, object>
-                    {
-                        { "Uri", uri }
-                    }
-                });
+            var context = IsDesignMode ? AvaloniaXamlSchemaContext.DesignInstance : AvaloniaXamlSchemaContext.Instance;
+            var reader = new XamlXmlReader(stream, context, readerSettings);
 
-                var topLevel = result as TopLevel;
+            object result = LoadFromReader(
+                reader,
+                AvaloniaXamlContext.For(readerSettings, rootInstance));
 
-                if (topLevel != null)
-                {
-                    DelayedBinding.ApplyBindings(topLevel);
-                }
+            var topLevel = result as TopLevel;
 
-                return result;
-            }
-            finally
+            if (topLevel != null)
             {
-                if (uri != null)
-                {
-                    s_uriStack.Pop();
-                }
+                DelayedBinding.ApplyBindings(topLevel);
             }
+
+            return result;
         }
 
-        private static AvaloniaParserFactory GetParserFactory()
+        internal static object LoadFromReader(XamlReader reader, AvaloniaXamlContext context = null, IAmbientProvider parentAmbientProvider = null)
         {
-            if (s_parserFactory == null)
-            {
-                s_parserFactory = new AvaloniaParserFactory();
-            }
+            var writer = AvaloniaXamlObjectWriter.Create(
+                                    (AvaloniaXamlSchemaContext)reader.SchemaContext,
+                                    context,
+                                    parentAmbientProvider);
 
-            return s_parserFactory;
+            XamlServices.Transform(reader, writer);
+            writer.ApplyAllDelayedProperties();
+            return writer.Result;
         }
 
+        internal static object LoadFromReader(XamlReader reader)
+        {
+            //return XamlServices.Load(reader);
+            return LoadFromReader(reader, null);
+        }
+
+
+        private static readonly DataContractSerializer s_xamlInfoSerializer =
+            new DataContractSerializer(typeof(AvaloniaResourceXamlInfo));
         /// <summary>
         /// Gets the URI for a type.
         /// </summary>
+        /// <param name="assetLocator"></param>
         /// <param name="type">The type.</param>
         /// <returns>The URI.</returns>
-        private static IEnumerable<Uri> GetUrisFor(Type type)
+        private static IEnumerable<Uri> GetUrisFor(IAssetLoader assetLocator, Type type)
         {
             var asm = type.GetTypeInfo().Assembly.GetName().Name;
+            var xamlInfoUri = new Uri($"avares://{asm}/!AvaloniaResourceXamlInfo");
             var typeName = type.FullName;
+            if (typeName == null)
+                throw new ArgumentException("Type doesn't have a FullName");
+            
+            if (assetLocator.Exists(xamlInfoUri))
+            {
+                using (var xamlInfoStream = assetLocator.Open(xamlInfoUri))
+                {
+                    var assetDoc = XDocument.Load(xamlInfoStream);
+                    XNamespace assetNs = assetDoc.Root.Attribute("xmlns").Value;
+                    XNamespace arrayNs = "http://schemas.microsoft.com/2003/10/Serialization/Arrays";
+                    Dictionary<string,string> xamlInfo =
+                        assetDoc.Root.Element(assetNs + "ClassToResourcePathIndex").Elements(arrayNs + "KeyValueOfstringstring")
+                         .ToDictionary(entry =>entry.Element(arrayNs + "Key").Value,
+                                entry => entry.Element(arrayNs + "Value").Value);
+                    
+                    if (xamlInfo.TryGetValue(typeName, out var rv))
+                    {
+                        yield return new Uri($"avares://{asm}{rv}");
+                        yield break;
+                    }
+                }
+            }           
+            
             yield return new Uri("resm:" + typeName + ".xaml?assembly=" + asm);
             yield return new Uri("resm:" + typeName + ".paml?assembly=" + asm);
-
         }
+        
+        public static object Parse(string xaml, Assembly localAssembly = null)
+            => new AvaloniaXamlLoader().Load(xaml, localAssembly);
+
+        public static T Parse<T>(string xaml, Assembly localAssembly = null)
+            => (T)Parse(xaml, localAssembly);
     }
 }

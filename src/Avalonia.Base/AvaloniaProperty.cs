@@ -21,7 +21,7 @@ namespace Avalonia
         /// </summary>
         public static readonly object UnsetValue = new Unset();
 
-        private static int s_nextId = 1;
+        private static int s_nextId;
         private readonly Subject<AvaloniaPropertyChangedEventArgs> _initialized;
         private readonly Subject<AvaloniaPropertyChangedEventArgs> _changed;
         private readonly PropertyMetadata _defaultMetadata;
@@ -231,7 +231,7 @@ namespace Avalonia
         }
 
         /// <summary>
-        /// Tests two <see cref="AvaloniaProperty"/>s for unequality.
+        /// Tests two <see cref="AvaloniaProperty"/>s for inequality.
         /// </summary>
         /// <param name="a">The first property.</param>
         /// <param name="b">The second property.</param>
@@ -311,7 +311,9 @@ namespace Avalonia
                 defaultBindingMode: defaultBindingMode);
 
             var result = new AttachedProperty<TValue>(name, typeof(TOwner), metadata, inherits);
-            AvaloniaPropertyRegistry.Instance.Register(typeof(THost), result);
+            var registry = AvaloniaPropertyRegistry.Instance;
+            registry.Register(typeof(TOwner), result);
+            registry.RegisterAttached(typeof(THost), result);
             return result;
         }
 
@@ -344,7 +346,9 @@ namespace Avalonia
                 defaultBindingMode: defaultBindingMode);
 
             var result = new AttachedProperty<TValue>(name, ownerType, metadata, inherits);
-            AvaloniaPropertyRegistry.Instance.Register(typeof(THost), result);
+            var registry = AvaloniaPropertyRegistry.Instance;
+            registry.Register(ownerType, result);
+            registry.RegisterAttached(typeof(THost), result);
             return result;
         }
 
@@ -360,20 +364,25 @@ namespace Avalonia
         /// The value to use when the property is set to <see cref="AvaloniaProperty.UnsetValue"/>
         /// </param>
         /// <param name="defaultBindingMode">The default binding mode for the property.</param>
+        /// <param name="enableDataValidation">
+        /// Whether the property is interested in data validation.
+        /// </param>
         /// <returns>A <see cref="AvaloniaProperty{TValue}"/></returns>
         public static DirectProperty<TOwner, TValue> RegisterDirect<TOwner, TValue>(
             string name,
             Func<TOwner, TValue> getter,
             Action<TOwner, TValue> setter = null,
             TValue unsetValue = default(TValue),
-            BindingMode defaultBindingMode = BindingMode.OneWay)
+            BindingMode defaultBindingMode = BindingMode.OneWay,
+            bool enableDataValidation = false)
                 where TOwner : IAvaloniaObject
         {
             Contract.Requires<ArgumentNullException>(name != null);
 
             var metadata = new DirectPropertyMetadata<TValue>(
                 unsetValue: unsetValue,
-                defaultBindingMode: defaultBindingMode);
+                defaultBindingMode: defaultBindingMode,
+                enableDataValidation: enableDataValidation);
 
             var result = new DirectProperty<TOwner, TValue>(name, getter, setter, metadata);
             AvaloniaPropertyRegistry.Instance.Register(typeof(TOwner), result);
@@ -471,7 +480,7 @@ namespace Avalonia
         /// <returns>True if the value is valid, otherwise false.</returns>
         public bool IsValidValue(object value)
         {
-            return TypeUtilities.TryCast(PropertyType, value, out value);
+            return TypeUtilities.TryConvertImplicit(PropertyType, value, out value);
         }
 
         /// <summary>

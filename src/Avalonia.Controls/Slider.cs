@@ -17,7 +17,7 @@ namespace Avalonia.Controls
         /// Defines the <see cref="Orientation"/> property.
         /// </summary>
         public static readonly StyledProperty<Orientation> OrientationProperty =
-            AvaloniaProperty.Register<Slider, Orientation>(nameof(Orientation), Orientation.Horizontal);
+            ScrollBar.OrientationProperty.AddOwner<Slider>();
 
         /// <summary>
         /// Defines the <see cref="IsSnapToTickEnabled"/> property.
@@ -33,17 +33,22 @@ namespace Avalonia.Controls
 
         // Slider required parts
         private Track _track;
+        private Button _decreaseButton;
+        private Button _increaseButton;
 
         /// <summary>
         /// Initializes static members of the <see cref="Slider"/> class. 
         /// </summary>
         static Slider()
         {
-            PseudoClass(OrientationProperty, o => o == Avalonia.Controls.Orientation.Vertical, ":vertical");
-            PseudoClass(OrientationProperty, o => o == Avalonia.Controls.Orientation.Horizontal, ":horizontal");
+            OrientationProperty.OverrideDefaultValue(typeof(Slider), Orientation.Horizontal);
+            PseudoClass<Slider, Orientation>(OrientationProperty, o => o == Orientation.Vertical, ":vertical");
+            PseudoClass<Slider, Orientation>(OrientationProperty, o => o == Orientation.Horizontal, ":horizontal");
             Thumb.DragStartedEvent.AddClassHandler<Slider>(x => x.OnThumbDragStarted, RoutingStrategies.Bubble);
             Thumb.DragDeltaEvent.AddClassHandler<Slider>(x => x.OnThumbDragDelta, RoutingStrategies.Bubble);
             Thumb.DragCompletedEvent.AddClassHandler<Slider>(x => x.OnThumbDragCompleted, RoutingStrategies.Bubble);
+            SmallChangeProperty.OverrideDefaultValue<Slider>(1);
+            LargeChangeProperty.OverrideDefaultValue<Slider>(10);
         }
 
         /// <summary>
@@ -83,7 +88,54 @@ namespace Avalonia.Controls
         /// <inheritdoc/>
         protected override void OnTemplateApplied(TemplateAppliedEventArgs e)
         {
-            _track = e.NameScope.Get<Track>("PART_Track");
+            if (_decreaseButton != null)
+            {
+                _decreaseButton.Click -= DecreaseClick;
+            }
+
+            if (_increaseButton != null)
+            {
+                _increaseButton.Click -= IncreaseClick;
+            }
+
+            _decreaseButton = e.NameScope.Find<Button>("PART_DecreaseButton");
+            _track = e.NameScope.Find<Track>("PART_Track");
+            _increaseButton = e.NameScope.Find<Button>("PART_IncreaseButton");
+
+            if (_decreaseButton != null)
+            {
+                _decreaseButton.Click += DecreaseClick;
+            }
+
+            if (_increaseButton != null)
+            {
+                _increaseButton.Click += IncreaseClick;
+            }
+        }
+
+        private void DecreaseClick(object sender, RoutedEventArgs e)
+        {
+            ChangeValueBy(-LargeChange);
+        }
+
+        private void IncreaseClick(object sender, RoutedEventArgs e)
+        {
+            ChangeValueBy(LargeChange);
+        }
+
+        private void ChangeValueBy(double by)
+        {
+            if (IsSnapToTickEnabled)
+            {
+                by = by < 0 ? Math.Min(-TickFrequency, by) : Math.Max(TickFrequency, by);
+            }
+
+            var value = Value;
+            var next = SnapToTick(Math.Max(Math.Min(value + by, Maximum), Minimum));
+            if (next != value)
+            {
+                Value = next;
+            }
         }
 
         /// <summary>
@@ -101,7 +153,7 @@ namespace Avalonia.Controls
         protected virtual void OnThumbDragDelta(VectorEventArgs e)
         {
             Thumb thumb = e.Source as Thumb;
-            if (thumb != null && _track.Thumb == thumb)
+            if (thumb != null && _track?.Thumb == thumb)
             {
                 MoveToNextTick(_track.Value);
             }
@@ -121,11 +173,7 @@ namespace Avalonia.Controls
         /// <param name="value">Value that want to snap to closest Tick.</param>
         private void MoveToNextTick(double value)
         {
-            double next = SnapToTick(Math.Max(Minimum, Math.Min(Maximum, value)));
-            if (next != value)
-            {
-                Value = next;
-            }
+            Value = SnapToTick(Math.Max(Minimum, Math.Min(Maximum, value)));
         }
 
         /// <summary>

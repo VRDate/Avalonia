@@ -1,10 +1,5 @@
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Input;
-using Avalonia.Controls;
 using Avalonia.Controls.Utils;
 using Avalonia.Input;
 
@@ -30,8 +25,9 @@ namespace Avalonia.Controls
 
             public void Execute(object parameter) => GetCommand()?.Execute(parameter);
 
-            //Implementation isn't needed in this case
+#pragma warning disable 67 // Event not used
             public event EventHandler CanExecuteChanged;
+#pragma warning restore 67
         }
 
 
@@ -54,13 +50,13 @@ namespace Avalonia.Controls
             public void Init()
             {
                 _hotkeySub = _control.GetObservable(HotKeyProperty).Subscribe(OnHotkeyChanged);
-                _parentSub = AncestorFinder.Create(_control, typeof (TopLevel)).Subscribe(OnParentChanged);
+                _parentSub = AncestorFinder.Create<TopLevel>(_control).Subscribe(OnParentChanged);
             }
 
-            private void OnParentChanged(IControl control)
+            private void OnParentChanged(TopLevel control)
             {
                 Unregister();
-                _root = (TopLevel) control;
+                _root = control;
                 Register();
             }
 

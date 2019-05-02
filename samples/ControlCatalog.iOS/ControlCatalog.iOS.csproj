@@ -20,8 +20,21 @@
     <WarningLevel>4</WarningLevel>
     <ConsolePause>false</ConsolePause>
     <MtouchArch>i386</MtouchArch>
-    <MtouchLink>None</MtouchLink>
-    <MtouchDebug>true</MtouchDebug>
+    <MtouchLink>SdkOnly</MtouchLink>
+    <MtouchDebug>True</MtouchDebug>
+    <MtouchSdkVersion>9.1</MtouchSdkVersion>
+    <MtouchProfiling>False</MtouchProfiling>
+    <MtouchFastDev>False</MtouchFastDev>
+    <MtouchNoSymbolStrip>False</MtouchNoSymbolStrip>
+    <MtouchUseLlvm>False</MtouchUseLlvm>
+    <MtouchUseThumb>False</MtouchUseThumb>
+    <MtouchEnableBitcode>False</MtouchEnableBitcode>
+    <MtouchUseSGen>False</MtouchUseSGen>
+    <MtouchUseRefCounting>False</MtouchUseRefCounting>
+    <OptimizePNGs>True</OptimizePNGs>
+    <MtouchTlsProvider>Default</MtouchTlsProvider>
+    <MtouchHttpClientHandler>HttpClientHandler</MtouchHttpClientHandler>
+    <MtouchFloat32>False</MtouchFloat32>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|iPhoneSimulator' ">
     <DebugType>none</DebugType>
@@ -128,10 +141,6 @@
       <Project>{7062AE20-5DCC-4442-9645-8195BDECE63E}</Project>
       <Name>Avalonia.Diagnostics</Name>
     </ProjectReference>
-    <ProjectReference Include="..\..\src\Avalonia.HtmlRenderer\Avalonia.HtmlRenderer.csproj">
-      <Project>{5FB2B005-0A7F-4DAD-ADD4-3ED01444E63D}</Project>
-      <Name>Avalonia.HtmlRenderer</Name>
-    </ProjectReference>
     <ProjectReference Include="..\..\src\Avalonia.Input\Avalonia.Input.csproj">
       <Project>{62024B2D-53EB-4638-B26B-85EEAA54866E}</Project>
       <Name>Avalonia.Input</Name>
@@ -144,9 +153,9 @@
       <Project>{42472427-4774-4C81-8AFF-9F27B8E31721}</Project>
       <Name>Avalonia.Layout</Name>
     </ProjectReference>
-    <ProjectReference Include="..\..\src\Avalonia.SceneGraph\Avalonia.SceneGraph.csproj">
+    <ProjectReference Include="..\..\src\Avalonia.Visuals\Avalonia.Visuals.csproj">
       <Project>{EB582467-6ABB-43A1-B052-E981BA910E3A}</Project>
-      <Name>Avalonia.SceneGraph</Name>
+      <Name>Avalonia.Visuals</Name>
     </ProjectReference>
     <ProjectReference Include="..\..\src\Avalonia.Styling\Avalonia.Styling.csproj">
       <Project>{F1BAA01A-F176-4C6A-B39D-5B40BB1B148F}</Project>
@@ -156,11 +165,9 @@
       <Project>{3E10A5FA-E8DA-48B1-AD44-6A5B6CB7750F}</Project>
       <Name>Avalonia.Themes.Default</Name>
     </ProjectReference>
-    <ProjectReference Include="..\..\src\Skia\Avalonia.Skia.iOS\Avalonia.Skia.iOS.csproj">
-      <Project>{47BE08A7-5985-410B-9FFC-2264B8EA595F}</Project>
-      <Name>Avalonia.Skia.iOS</Name>
-      <IsAppExtension>false</IsAppExtension>
-      <IsWatchApp>false</IsWatchApp>
+    <ProjectReference Include="..\..\src\Skia\Avalonia.Skia\Avalonia.Skia.csproj">
+      <Project>{7d2d3083-71dd-4cc9-8907-39a0d86fb322}</Project>
+      <Name>Avalonia.Skia</Name>
     </ProjectReference>
     <ProjectReference Include="..\ControlCatalog\ControlCatalog.csproj">
       <Project>{d0a739b9-3c68-4ba6-a328-41606954b6bd}</Project>
@@ -168,4 +175,6 @@
     </ProjectReference>
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath)\Xamarin\iOS\Xamarin.iOS.CSharp.targets" />
+  <Import Project="..\..\build\iOSWorkarounds.props" />
+  <Import Project="..\..\build\LegacyProject.targets" />
 </Project>

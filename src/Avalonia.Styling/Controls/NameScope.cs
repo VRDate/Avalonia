@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Avalonia.LogicalTree;
 
 namespace Avalonia.Controls
 {
@@ -15,7 +16,7 @@ namespace Avalonia.Controls
         /// Defines the NameScope attached property.
         /// </summary>
         public static readonly AttachedProperty<INameScope> NameScopeProperty =
-            AvaloniaProperty.RegisterAttached<NameScope, Visual, INameScope>("NameScope");
+            AvaloniaProperty.RegisterAttached<NameScope, StyledElement, INameScope>("NameScope");
 
         private readonly Dictionary<string, object> _inner = new Dictionary<string, object>();
 
@@ -30,23 +31,53 @@ namespace Avalonia.Controls
         public event EventHandler<NameScopeEventArgs> Unregistered;
 
         /// <summary>
-        /// Gets the value of the attached <see cref="NameScopeProperty"/> on a visual.
+        /// Finds the containing name scope for a styled element.
         /// </summary>
-        /// <param name="visual">The visual.</param>
-        /// <returns>The value of the NameScope attached property.</returns>
-        public static INameScope GetNameScope(Visual visual)
+        /// <param name="styled">The styled element.</param>
+        /// <returns>The containing name scope.</returns>
+        public static INameScope FindNameScope(StyledElement styled)
         {
-            return visual.GetValue(NameScopeProperty);
+            Contract.Requires<ArgumentNullException>(styled != null);
+
+            INameScope result;
+
+            while (styled != null)
+            {
+                result = styled as INameScope ?? GetNameScope(styled);
+
+                if (result != null)
+                {
+                    return result;
+                }
+
+                styled = (styled as ILogical)?.LogicalParent as StyledElement;
+            }
+
+            return null;
         }
 
         /// <summary>
-        /// Sets the value of the attached <see cref="NameScopeProperty"/> on a visual.
+        /// Gets the value of the attached <see cref="NameScopeProperty"/> on a styled element.
         /// </summary>
-        /// <param name="visual">The visual.</param>
-        /// <param name="value">The value to set.</param>
-        public static void SetNameScope(Visual visual, INameScope value)
+        /// <param name="styled">The styled element.</param>
+        /// <returns>The value of the NameScope attached property.</returns>
+        public static INameScope GetNameScope(StyledElement styled)
         {
-            visual.SetValue(NameScopeProperty, value);
+            Contract.Requires<ArgumentNullException>(styled != null);
+
+            return styled.GetValue(NameScopeProperty);
+        }
+
+        /// <summary>
+        /// Sets the value of the attached <see cref="NameScopeProperty"/> on a styled element.
+        /// </summary>
+        /// <param name="styled">The styled element.</param>
+        /// <param name="value">The value to set.</param>
+        public static void SetNameScope(StyledElement styled, INameScope value)
+        {
+            Contract.Requires<ArgumentNullException>(styled != null);
+
+            styled.SetValue(NameScopeProperty, value);
         }
 
         /// <summary>

@@ -2,19 +2,22 @@
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
+using Avalonia.Controls;
+using Avalonia.Controls.Platform.Surfaces;
 using Avalonia.Direct2D1.Media;
+using Avalonia.Direct2D1.Media.Imaging;
 using Avalonia.Media;
 using Avalonia.Platform;
-using Avalonia.Controls;
 
 namespace Avalonia
 {
     public static class Direct2DApplicationExtensions
     {
-        public static AppBuilder UseDirect2D1(this AppBuilder builder)
+        public static T UseDirect2D1<T>(this T builder) where T : AppBuilderBase<T>, new()
         {
-            builder.RenderingSubsystem = Avalonia.Direct2D1.Direct2D1Platform.Initialize;
+            builder.UseRenderingSubsystem(Direct2D1.Direct2D1Platform.Initialize, "Direct2D1");
             return builder;
         }
     }
@@ -26,67 +29,177 @@ namespace Avalonia.Direct2D1
     {
         private static readonly Direct2D1Platform s_instance = new Direct2D1Platform();
 
-        private static readonly SharpDX.Direct2D1.Factory s_d2D1Factory = new SharpDX.Direct2D1.Factory();
+        public static SharpDX.Direct3D11.Device Direct3D11Device { get; private set; }
 
-        private static readonly SharpDX.DirectWrite.Factory s_dwfactory = new SharpDX.DirectWrite.Factory();
+        public static SharpDX.Direct2D1.Factory1 Direct2D1Factory { get; private set; }
 
-        private static readonly SharpDX.WIC.ImagingFactory s_imagingFactory = new SharpDX.WIC.ImagingFactory();
+        public static SharpDX.Direct2D1.Device Direct2D1Device { get; private set; }
 
-        public static void Initialize() => AvaloniaLocator.CurrentMutable
-            .Bind<IPlatformRenderInterface>().ToConstant(s_instance)
-            .BindToSelf(s_d2D1Factory)
-            .BindToSelf(s_dwfactory)
-            .BindToSelf(s_imagingFactory);
+        public static SharpDX.DirectWrite.Factory1 DirectWriteFactory { get; private set; }
 
-        public IBitmapImpl CreateBitmap(int width, int height)
+        public static SharpDX.WIC.ImagingFactory ImagingFactory { get; private set; }
+
+        public static SharpDX.DXGI.Device1 DxgiDevice { get; private set; }
+
+        public IEnumerable<string> InstalledFontNames
         {
-            return new BitmapImpl(s_imagingFactory, width, height);
+            get
+            {
+                var cache = Direct2D1FontCollectionCache.s_installedFontCollection;
+                var length = cache.FontFamilyCount;
+                for (int i = 0; i < length; i++)
+                {
+                    var names = cache.GetFontFamily(i).FamilyNames;
+                    yield return names.GetString(0);
+                }
+            }
+        }
+
+        private static readonly object s_initLock = new object();
+        private static bool s_initialized = false;
+
+        internal static void InitializeDirect2D()
+        {
+            lock (s_initLock)
+            {
+                if (s_initialized)
+                {
+                    return;
+                }
+#if DEBUG
+                try
+                {
+                    Direct2D1Factory = new SharpDX.Direct2D1.Factory1(
+                        SharpDX.Direct2D1.FactoryType.MultiThreaded,
+                            SharpDX.Direct2D1.DebugLevel.Error);
+                }
+                catch
+                {
+                    //
+                }
+#endif
+                if (Direct2D1Factory == null)
+                {
+                    Direct2D1Factory = new SharpDX.Direct2D1.Factory1(
+                        SharpDX.Direct2D1.FactoryType.MultiThreaded,
+                        SharpDX.Direct2D1.DebugLevel.None);
+                }
+
+                using (var factory = new SharpDX.DirectWrite.Factory())
+                {
+                    DirectWriteFactory = factory.QueryInterface<SharpDX.DirectWrite.Factory1>();
+                }
+
+                ImagingFactory = new SharpDX.WIC.ImagingFactory();
+
+                var featureLevels = new[]
+                {
+                    SharpDX.Direct3D.FeatureLevel.Level_11_1,
+                    SharpDX.Direct3D.FeatureLevel.Level_11_0,
+                    SharpDX.Direct3D.FeatureLevel.Level_10_1,
+                    SharpDX.Direct3D.FeatureLevel.Level_10_0,
+                    SharpDX.Direct3D.FeatureLevel.Level_9_3,
+                    SharpDX.Direct3D.FeatureLevel.Level_9_2,
+                    SharpDX.Direct3D.FeatureLevel.Level_9_1,
+                };
+
+                Direct3D11Device = new SharpDX.Direct3D11.Device(
+                    SharpDX.Direct3D.DriverType.Hardware,
+                    SharpDX.Direct3D11.DeviceCreationFlags.BgraSupport | SharpDX.Direct3D11.DeviceCreationFlags.VideoSupport,
+                    featureLevels);
+
+                DxgiDevice = Direct3D11Device.QueryInterface<SharpDX.DXGI.Device1>();
+
+                Direct2D1Device = new SharpDX.Direct2D1.Device(Direct2D1Factory, DxgiDevice);
+
+                s_initialized = true;
+            }
+        }
+
+        public static void Initialize()
+        {
+            InitializeDirect2D();
+            AvaloniaLocator.CurrentMutable.Bind<IPlatformRenderInterface>().ToConstant(s_instance);
+            SharpDX.Configuration.EnableReleaseOnFinalizer = true;
+        }
+
+        public IBitmapImpl CreateBitmap(PixelSize size, Vector dpi)
+        {
+            return new WicBitmapImpl(size, dpi);
         }
 
         public IFormattedTextImpl CreateFormattedText(
             string text,
-            string fontFamily,
-            double fontSize,
-            FontStyle fontStyle,
+            Typeface typeface,
             TextAlignment textAlignment,
-            FontWeight fontWeight,
-            TextWrapping wrapping)
+            TextWrapping wrapping,
+            Size constraint,
+            IReadOnlyList<FormattedTextStyleSpan> spans)
         {
-            return new FormattedTextImpl(text, fontFamily, fontSize, fontStyle, textAlignment, fontWeight, wrapping);
+            return new FormattedTextImpl(
+                text,
+                typeface,
+                textAlignment,
+                wrapping,
+                constraint,
+                spans);
         }
 
-        public IRenderTarget CreateRenderer(IPlatformHandle handle)
+        public IRenderTarget CreateRenderTarget(IEnumerable<object> surfaces)
         {
-            if (handle.HandleDescriptor == "HWND")
+            foreach (var s in surfaces)
             {
-                return new RenderTarget(handle.Handle);
+                if (s is IPlatformHandle nativeWindow)
+                {
+                    if (nativeWindow.HandleDescriptor != "HWND")
+                    {
+                        throw new NotSupportedException("Don't know how to create a Direct2D1 renderer from " +
+                                                        nativeWindow.HandleDescriptor);
+                    }
+
+                    return new HwndRenderTarget(nativeWindow);
+                }
+                if (s is IExternalDirect2DRenderTargetSurface external)
+                {
+                    return new ExternalRenderTarget(external);
+                }
+
+                if (s is IFramebufferPlatformSurface fb)
+                {
+                    return new FramebufferShimRenderTarget(fb);
+                }
             }
-            else
-            {
-                throw new NotSupportedException(string.Format(
-                    "Don't know how to create a Direct2D1 renderer from a '{0}' handle",
-                    handle.HandleDescriptor));
-            }
+            throw new NotSupportedException("Don't know how to create a Direct2D1 renderer from any of provided surfaces");
         }
 
-        public IRenderTargetBitmapImpl CreateRenderTargetBitmap(int width, int height)
+        public IRenderTargetBitmapImpl CreateRenderTargetBitmap(PixelSize size, Vector dpi)
         {
-            return new RenderTargetBitmapImpl(s_imagingFactory, s_d2D1Factory, width, height);
+            return new WicRenderTargetBitmapImpl(size, dpi);
         }
 
-        public IStreamGeometryImpl CreateStreamGeometry()
+        public IWriteableBitmapImpl CreateWriteableBitmap(PixelSize size, Vector dpi, PixelFormat? format = null)
         {
-            return new StreamGeometryImpl();
+            return new WriteableWicBitmapImpl(size, dpi, format);
         }
+
+        public IGeometryImpl CreateEllipseGeometry(Rect rect) => new EllipseGeometryImpl(rect);
+        public IGeometryImpl CreateLineGeometry(Point p1, Point p2) => new LineGeometryImpl(p1, p2);
+        public IGeometryImpl CreateRectangleGeometry(Rect rect) => new RectangleGeometryImpl(rect);
+        public IStreamGeometryImpl CreateStreamGeometry() => new StreamGeometryImpl();
 
         public IBitmapImpl LoadBitmap(string fileName)
         {
-            return new BitmapImpl(s_imagingFactory, fileName);
+            return new WicBitmapImpl(fileName);
         }
 
         public IBitmapImpl LoadBitmap(Stream stream)
         {
-            return new BitmapImpl(s_imagingFactory, stream);
+            return new WicBitmapImpl(stream);
+        }
+
+        public IBitmapImpl LoadBitmap(PixelFormat format, IntPtr data, PixelSize size, Vector dpi, int stride)
+        {
+            return new WicBitmapImpl(format, data, size, dpi, stride);
         }
     }
 }

@@ -1,7 +1,9 @@
 // Copyright (c) The Avalonia Project. All rights reserved.
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
+using System;
 using Avalonia.Data;
+using Avalonia.Utilities;
 
 namespace Avalonia
 {
@@ -13,16 +15,32 @@ namespace Avalonia
         /// <summary>
         /// Called when a <see cref="PriorityValue"/>'s value changes.
         /// </summary>
-        /// <param name="sender">The source of the change.</param>
+        /// <param name="property">The the property that has changed.</param>
+        /// <param name="priority">The priority of the value.</param>
         /// <param name="oldValue">The old value.</param>
         /// <param name="newValue">The new value.</param>
-        void Changed(PriorityValue sender, object oldValue, object newValue);
+        void Changed(AvaloniaProperty property, int priority, object oldValue, object newValue);
 
         /// <summary>
-        /// Called when the validation state of a <see cref="PriorityValue"/> changes.
+        /// Called when a <see cref="BindingNotification"/> is received by a 
+        /// <see cref="PriorityValue"/>.
         /// </summary>
-        /// <param name="sender">The source of the change.</param>
-        /// <param name="status">The validation status.</param>
-        void DataValidationChanged(PriorityValue sender, IValidationStatus status);
+        /// <param name="property">The the property that has changed.</param>
+        /// <param name="notification">The notification.</param>
+        void BindingNotificationReceived(AvaloniaProperty property, BindingNotification notification);
+
+        /// <summary>
+        /// Logs a binding error.
+        /// </summary>
+        /// <param name="property">The property the error occurred on.</param>
+        /// <param name="e">The binding error.</param>
+        void LogError(AvaloniaProperty property, Exception e);
+
+        /// <summary>
+        /// Ensures that the current thread is the UI thread.
+        /// </summary>
+        void VerifyAccess();
+
+        DeferredSetter<object> Setter { get; }
     }
 }

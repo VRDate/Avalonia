@@ -3,11 +3,9 @@
 
 using System;
 using System.Collections.Specialized;
-using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Layout;
-using Avalonia.VisualTree;
 
 namespace Avalonia.Controls
 {
@@ -19,6 +17,8 @@ namespace Avalonia.Controls
         private double _averageItemSize;
         private int _averageCount;
         private double _pixelOffset;
+        private double _crossAxisOffset;
+        private bool _forceRemeasure;
 
         bool IVirtualizingPanel.IsFull
         {
@@ -59,12 +59,33 @@ namespace Avalonia.Controls
             }
         }
 
+        double IVirtualizingPanel.CrossAxisOffset
+        {
+            get { return _crossAxisOffset; }
+
+            set
+            {
+                if (_crossAxisOffset != value)
+                {
+                    _crossAxisOffset = value;
+                    InvalidateArrange();
+                }
+            }
+        }
+
         private IVirtualizingController Controller => ((IVirtualizingPanel)this).Controller;
+
+        void IVirtualizingPanel.ForceInvalidateMeasure()
+        {
+            InvalidateMeasure();
+            _forceRemeasure = true;
+        }
 
         protected override Size MeasureOverride(Size availableSize)
         {
-            if (availableSize != ((ILayoutable)this).PreviousMeasure)
+            if (_forceRemeasure || availableSize != ((ILayoutable)this).PreviousMeasure)
             {
+                _forceRemeasure = false;
                 _availableSpace = availableSize;
                 Controller?.UpdateControls();
             }
@@ -111,12 +132,14 @@ namespace Avalonia.Controls
 
         protected override IInputElement GetControlInDirection(NavigationDirection direction, IControl from)
         {
-            var logicalScrollable = Parent as ILogicalScrollable;
-            var fromControl = from as IControl;
+            if (from == null)
+                return null;
 
-            if (logicalScrollable?.IsLogicalScrollEnabled == true && fromControl != null)
+            var logicalScrollable = Parent as ILogicalScrollable;
+
+            if (logicalScrollable?.IsLogicalScrollEnabled == true)
             {
-                return logicalScrollable.GetControlInDirection(direction, fromControl);
+                return logicalScrollable.GetControlInDirection(direction, from);
             }
             else
             {
@@ -132,7 +155,11 @@ namespace Avalonia.Controls
         {
             if (orientation == Orientation.Vertical)
             {
-                rect = new Rect(rect.X, rect.Y - _pixelOffset, rect.Width, rect.Height);
+                rect = new Rect(
+                    rect.X - _crossAxisOffset,
+                    rect.Y - _pixelOffset,
+                    rect.Width,
+                    rect.Height);
                 child.Arrange(rect);
 
                 if (rect.Y >= _availableSpace.Height)
@@ -149,7 +176,11 @@ namespace Avalonia.Controls
             }
             else
             {
-                rect = new Rect(rect.X - _pixelOffset, rect.Y, rect.Width, rect.Height);
+                rect = new Rect(
+                    rect.X - _pixelOffset,
+                    rect.Y - _crossAxisOffset,
+                    rect.Width,
+                    rect.Height);
                 child.Arrange(rect);
 
                 if (rect.X >= _availableSpace.Width)
@@ -169,7 +200,7 @@ namespace Avalonia.Controls
         private void UpdateAdd(IControl child)
         {
             var bounds = Bounds;
-            var gap = Gap;
+            var spacing = Spacing;
 
             child.Measure(_availableSpace);
             ++_averageCount;
@@ -177,13 +208,13 @@ namespace Avalonia.Controls
             if (Orientation == Orientation.Vertical)
             {
                 var height = child.DesiredSize.Height;
-                _takenSpace += height + gap;
+                _takenSpace += height + spacing;
                 AddToAverageItemSize(height);
             }
             else
             {
                 var width = child.DesiredSize.Width;
-                _takenSpace += width + gap;
+                _takenSpace += width + spacing;
                 AddToAverageItemSize(width);
             }
         }
@@ -191,18 +222,18 @@ namespace Avalonia.Controls
         private void UpdateRemove(IControl child)
         {
             var bounds = Bounds;
-            var gap = Gap;
+            var spacing = Spacing;
 
             if (Orientation == Orientation.Vertical)
             {
                 var height = child.DesiredSize.Height;
-                _takenSpace -= height + gap;
+                _takenSpace -= height + spacing;
                 RemoveFromAverageItemSize(height);
             }
             else
             {
                 var width = child.DesiredSize.Width;
-                _takenSpace -= width + gap;
+                _takenSpace -= width + spacing;
                 RemoveFromAverageItemSize(width);
             }
 

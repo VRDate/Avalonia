@@ -2,14 +2,15 @@
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
 using System;
-using System.Reflection;
+using System.Reactive.Concurrency;
 using System.Threading;
+using Avalonia.Animation;
 using Avalonia.Controls;
-using Avalonia.Controls.Platform;
 using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
-using Avalonia.Layout;
+using Avalonia.Input.Raw;
+using Avalonia.Platform;
 using Avalonia.Rendering;
 using Avalonia.Styling;
 using Avalonia.Threading;
@@ -30,7 +31,7 @@ namespace Avalonia
     /// method.
     /// - Tracks the lifetime of the application.
     /// </remarks>
-    public class Application : IGlobalDataTemplates, IGlobalStyles, IStyleRoot, IApplicationLifecycle
+    public class Application : IApplicationLifecycle, IGlobalDataTemplates, IGlobalStyles, IStyleRoot, IResourceNode
     {
         /// <summary>
         /// The application-global data templates.
@@ -40,14 +41,23 @@ namespace Avalonia
         private readonly Lazy<IClipboard> _clipboard =
             new Lazy<IClipboard>(() => (IClipboard)AvaloniaLocator.Current.GetService(typeof(IClipboard)));
         private readonly Styler _styler = new Styler();
+        private Styles _styles;
+        private IResourceDictionary _resources;
+
+        private CancellationTokenSource _mainLoopCancellationTokenSource;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="Application"/> class.
         /// </summary>
         public Application()
         {
+            Windows = new WindowCollection(this);
+
             OnExit += OnExiting;
         }
+
+        /// <inheritdoc/>
+        public event EventHandler<ResourcesChangedEventArgs> ResourcesChanged;
 
         /// <summary>
         /// Gets the current instance of the <see cref="Application"/> class.
@@ -66,11 +76,7 @@ namespace Avalonia
         /// <value>
         /// The application's global data templates.
         /// </value>
-        public DataTemplates DataTemplates
-        {
-            get { return _dataTemplates ?? (_dataTemplates = new DataTemplates()); }
-            set { _dataTemplates = value; }
-        }
+        public DataTemplates DataTemplates => _dataTemplates ?? (_dataTemplates = new DataTemplates());
 
         /// <summary>
         /// Gets the application's focus manager.
@@ -102,6 +108,34 @@ namespace Avalonia
         public IClipboard Clipboard => _clipboard.Value;
 
         /// <summary>
+        /// Gets the application's global resource dictionary.
+        /// </summary>
+        public IResourceDictionary Resources
+        {
+            get => _resources ?? (Resources = new ResourceDictionary());
+            set
+            {
+                Contract.Requires<ArgumentNullException>(value != null);
+
+                var hadResources = false;
+
+                if (_resources != null)
+                {
+                    hadResources = _resources.Count > 0;
+                    _resources.ResourcesChanged -= ThisResourcesChanged;
+                }
+
+                _resources = value;
+                _resources.ResourcesChanged += ThisResourcesChanged;
+
+                if (hadResources || _resources.Count > 0)
+                {
+                    ResourcesChanged?.Invoke(this, new ResourcesChangedEventArgs());
+                }
+            }
+        }
+
+        /// <summary>
         /// Gets the application's global styles.
         /// </summary>
         /// <value>
@@ -110,12 +144,58 @@ namespace Avalonia
         /// <remarks>
         /// Global styles apply to all windows in the application.
         /// </remarks>
-        public Styles Styles { get; } = new Styles();
+        public Styles Styles => _styles ?? (_styles = new Styles());
+
+        /// <inheritdoc/>
+        bool IDataTemplateHost.IsDataTemplatesInitialized => _dataTemplates != null;
 
         /// <summary>
         /// Gets the styling parent of the application, which is null.
         /// </summary>
         IStyleHost IStyleHost.StylingParent => null;
+
+        /// <inheritdoc/>
+        bool IStyleHost.IsStylesInitialized => _styles != null;
+
+        /// <inheritdoc/>
+        bool IResourceProvider.HasResources => _resources?.Count > 0;
+
+        /// <inheritdoc/>
+        IResourceNode IResourceNode.ResourceParent => null;
+
+        /// <summary>
+        /// Gets or sets the <see cref="ExitMode"/>. This property indicates whether the application exits explicitly or implicitly. 
+        /// If <see cref="ExitMode"/> is set to OnExplicitExit the application is only closes if Exit is called.
+        /// The default is OnLastWindowClose
+        /// </summary>
+        /// <value>
+        /// The shutdown mode.
+        /// </value>
+        public ExitMode ExitMode { get; set; }
+
+        /// <summary>
+        /// Gets or sets the main window of the application.
+        /// </summary>
+        /// <value>
+        /// The main window.
+        /// </value>
+        public Window MainWindow { get; set; }
+
+        /// <summary>
+        /// Gets the open windows of the application.
+        /// </summary>
+        /// <value>
+        /// The windows.
+        /// </value>
+        public WindowCollection Windows { get; }
+
+        /// <summary>
+        /// Gets or sets a value indicating whether this instance is existing.
+        /// </summary>
+        /// <value>
+        ///   <c>true</c> if this instance is existing; otherwise, <c>false</c>.
+        /// </value>
+        internal bool IsExiting { get; set; }
 
         /// <summary>
         /// Initializes the application by loading XAML etc.
@@ -130,10 +210,74 @@ namespace Avalonia
         /// <param name="closable">The closable to track</param>
         public void Run(ICloseable closable)
         {
-            var source = new CancellationTokenSource();
-            closable.Closed += OnExiting;
-            closable.Closed += (s, e) => source.Cancel();
-            Dispatcher.UIThread.MainLoop(source.Token);
+            if (_mainLoopCancellationTokenSource != null)
+            {
+                throw new Exception("Run should only called once");
+            }
+
+            closable.Closed += (s, e) => Exit();
+
+            _mainLoopCancellationTokenSource = new CancellationTokenSource();
+
+            Dispatcher.UIThread.MainLoop(_mainLoopCancellationTokenSource.Token);
+
+            // Make sure we call OnExit in case an error happened and Exit() wasn't called explicitly
+            if (!IsExiting)
+            {
+                OnExit?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        /// <summary>
+        /// Runs the application's main loop until some condition occurs that is specified by ExitMode.
+        /// </summary>
+        /// <param name="mainWindow">The main window</param>
+        public void Run(Window mainWindow)
+        {
+            if (_mainLoopCancellationTokenSource != null)
+            {
+                throw new Exception("Run should only called once");
+            }
+
+            _mainLoopCancellationTokenSource = new CancellationTokenSource();
+
+            if (MainWindow == null)
+            {
+                if (mainWindow == null)
+                {
+                    throw new ArgumentNullException(nameof(mainWindow));
+                }
+
+                if (!mainWindow.IsVisible)
+                {
+                    mainWindow.Show();
+                }
+
+                MainWindow = mainWindow;
+            }           
+
+            Dispatcher.UIThread.MainLoop(_mainLoopCancellationTokenSource.Token);
+
+            // Make sure we call OnExit in case an error happened and Exit() wasn't called explicitly
+            if (!IsExiting)
+            {
+                OnExit?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        /// <summary>
+        /// Runs the application's main loop until the <see cref="CancellationToken"/> is canceled.
+        /// </summary>
+        /// <param name="token">The token to track</param>
+        public void Run(CancellationToken token)
+        {
+            Dispatcher.UIThread.MainLoop(token);
+
+            // Make sure we call OnExit in case an error happened and Exit() wasn't called explicitly
+            if (!IsExiting)
+            {
+                OnExit?.Invoke(this, EventArgs.Empty);
+            }
         }
 
         /// <summary>
@@ -141,14 +285,27 @@ namespace Avalonia
         /// </summary>
         public void Exit()
         {
+            IsExiting = true;
+
+            Windows.Clear();
+
             OnExit?.Invoke(this, EventArgs.Empty);
+
+            _mainLoopCancellationTokenSource?.Cancel();
         }
-        
+
+        /// <inheritdoc/>
+        bool IResourceProvider.TryGetResource(string key, out object value)
+        {
+            value = null;
+            return (_resources?.TryGetResource(key, out value) ?? false) ||
+                   Styles.TryGetResource(key, out value);
+        }
+
         /// <summary>
         /// Sent when the application is exiting.
         /// </summary>
         public event EventHandler OnExit;
-
 
         /// <summary>
         /// Called when the application is exiting.
@@ -176,9 +333,20 @@ namespace Avalonia
                 .Bind<IInputManager>().ToConstant(InputManager)
                 .Bind<IKeyboardNavigationHandler>().ToTransient<KeyboardNavigationHandler>()
                 .Bind<IStyler>().ToConstant(_styler)
-                .Bind<ILayoutManager>().ToSingleton<LayoutManager>()
-                .Bind<IRenderQueueManager>().ToTransient<RenderQueueManager>()
-                .Bind<IApplicationLifecycle>().ToConstant(this);
+                .Bind<IApplicationLifecycle>().ToConstant(this)
+                .Bind<IScheduler>().ToConstant(AvaloniaScheduler.Instance)
+                .Bind<IDragDropDevice>().ToConstant(DragDropDevice.Instance)
+                .Bind<IPlatformDragSource>().ToTransient<InProcessDragSource>();
+
+            var clock = new RenderLoopClock();
+            AvaloniaLocator.CurrentMutable
+                .Bind<IGlobalClock>().ToConstant(clock)
+                .GetService<IRenderLoop>()?.Add(clock);
+        }
+
+        private void ThisResourcesChanged(object sender, ResourcesChangedEventArgs e)
+        {
+            ResourcesChanged?.Invoke(this, e);
         }
     }
 }

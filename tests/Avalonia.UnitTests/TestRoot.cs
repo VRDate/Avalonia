@@ -5,15 +5,28 @@ using System;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
+using Avalonia.Media;
 using Avalonia.Platform;
 using Avalonia.Rendering;
 using Avalonia.Styling;
+using Moq;
 
 namespace Avalonia.UnitTests
 {
-    public class TestRoot : Decorator, IFocusScope, ILayoutRoot, INameScope, IRenderRoot, IStyleRoot
+    public class TestRoot : Decorator, IFocusScope, ILayoutRoot, IInputRoot, INameScope, IRenderRoot, IStyleRoot
     {
         private readonly NameScope _nameScope = new NameScope();
+
+        public TestRoot()
+        {
+            Renderer = Mock.Of<IRenderer>();
+        }
+
+        public TestRoot(IControl child)
+            : this()
+        {
+            Child = child;
+        }
 
         event EventHandler<NameScopeEventArgs> INameScope.Registered
         {
@@ -31,21 +44,55 @@ namespace Avalonia.UnitTests
 
         public int NameScopeUnregisteredSubscribers { get; private set; }
 
-        public Size ClientSize => new Size(100, 100);
+        public Size ClientSize { get; set; } = new Size(100, 100);
 
-        public Size MaxClientSize => Size.Infinity;
+        public Size MaxClientSize { get; set; } = Size.Infinity;
 
         public double LayoutScaling => 1;
 
-        public ILayoutManager LayoutManager => AvaloniaLocator.Current.GetService<ILayoutManager>();
+        public ILayoutManager LayoutManager { get; set; } = new LayoutManager();
 
-        public IRenderTarget RenderTarget => null;
+        public double RenderScaling => 1;
 
-        public IRenderQueueManager RenderQueueManager => null;
+        public IRenderer Renderer { get; set; }
 
-        public Point PointToClient(Point p) => p;
+        public IAccessKeyHandler AccessKeyHandler => null;
 
-        public Point PointToScreen(Point p) => p;
+        public IKeyboardNavigationHandler KeyboardNavigationHandler => null;
+
+        public IInputElement PointerOverElement { get; set; }
+
+        public IMouseDevice MouseDevice { get; set; }
+
+        public bool ShowAccessKeys { get; set; }
+
+        public IStyleHost StylingParent { get; set; }
+
+        IStyleHost IStyleHost.StylingParent => StylingParent;
+
+        public IRenderTarget CreateRenderTarget()
+        {
+            var dc = new Mock<IDrawingContextImpl>();
+            dc.Setup(x => x.CreateLayer(It.IsAny<Size>())).Returns(() =>
+            {
+                var layerDc = new Mock<IDrawingContextImpl>();
+                var layer = new Mock<IRenderTargetBitmapImpl>();
+                layer.Setup(x => x.CreateDrawingContext(It.IsAny<IVisualBrushRenderer>())).Returns(layerDc.Object);
+                return layer.Object;
+            });
+
+            var result = new Mock<IRenderTarget>();
+            result.Setup(x => x.CreateDrawingContext(It.IsAny<IVisualBrushRenderer>())).Returns(dc.Object);
+            return result.Object;
+        }
+
+        public void Invalidate(Rect rect)
+        {
+        }
+
+        public Point PointToClient(PixelPoint p) => p.ToPoint(1);
+
+        public PixelPoint PointToScreen(Point p) => PixelPoint.FromPoint(p, 1);
 
         void INameScope.Register(string name, object element)
         {

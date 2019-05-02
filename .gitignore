@@ -9,6 +9,7 @@
 *.suo
 *.user
 *.sln.docstates
+.vs/
 
 # Build results
 
@@ -93,16 +94,17 @@ publish/
 *.Publish.xml
 *.pubxml
 
-# NuGet Packages Directory
-## TODO: If you have NuGet Package Restore enabled, uncomment the next line
-packages/
-
 # Windows Azure Build Output
 csx
 *.build.csdef
 
 # Windows Store app package directory
 AppPackages/
+
+# NCrunch
+_NCrunch_*/
+*.ncrunchsolution.user
+nCrunchTemp_*
 
 # Others
 sql/
@@ -152,3 +154,45 @@ $RECYCLE.BIN/
 #################
 *.userprefs
 *.nugetreferenceswitcher
+
+
+#################
+## Rider
+#################
+.idea
+
+#################
+## VS Code
+#################
+.vscode/
+
+#################
+## Cake
+#################
+tools/*
+!tools/packages.config
+.nuget
+artifacts/
+nuget
+Avalonia.XBuild.sln
+project.lock.json
+.idea/*
+
+
+##################
+## BenchmarkDotNet
+##################
+BenchmarkDotNet.Artifacts/
+
+dirs.sln
+
+
+##################
+# XCode
+##################
+Index/
+Logs/
+ModuleCache.noindex/
+Build/Intermediates.noindex/
+info.plist
+build-intermediate

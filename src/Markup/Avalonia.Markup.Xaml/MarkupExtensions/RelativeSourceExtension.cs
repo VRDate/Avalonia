@@ -1,8 +1,9 @@
 // Copyright (c) The Avalonia Project. All rights reserved.
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
-using OmniXaml;
-using Avalonia.Markup.Xaml.Data;
+using System;
+using Avalonia.Data;
+using Portable.Xaml.Markup;
 
 namespace Avalonia.Markup.Xaml.MarkupExtensions
 {
@@ -17,14 +18,24 @@ namespace Avalonia.Markup.Xaml.MarkupExtensions
             Mode = mode;
         }
 
-        public override object ProvideValue(MarkupExtensionContext extensionContext)
+        public override object ProvideValue(IServiceProvider serviceProvider)
         {
             return new RelativeSource
             {
                 Mode = Mode,
+                AncestorType = AncestorType,
+                AncestorLevel = AncestorLevel,
+                Tree = Tree,
             };
         }
 
-        public RelativeSourceMode Mode { get; set; }
+        [ConstructorArgument("mode")]
+        public RelativeSourceMode Mode { get; set; } = RelativeSourceMode.FindAncestor;
+
+        public Type AncestorType { get; set; }
+
+        public TreeType Tree { get; set; }
+
+        public int AncestorLevel { get; set; } = 1;
     }
 }

@@ -7,6 +7,11 @@ using Avalonia.Layout;
 using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Controls;
+using Avalonia.Rendering;
+using Avalonia.Threading;
+using System.Reactive.Disposables;
+using System.Reactive.Concurrency;
+using Avalonia.Input.Platform;
 
 namespace Avalonia.UnitTests
 {
@@ -29,7 +34,12 @@ namespace Avalonia.UnitTests
             var scope = AvaloniaLocator.EnterScope();
             var app = new UnitTestApplication(services);
             AvaloniaLocator.CurrentMutable.BindToSelf<Application>(app);
-            return scope;
+            Dispatcher.UIThread.UpdateServices();
+            return Disposable.Create(() =>
+            {
+                scope.Dispose();
+                Dispatcher.UIThread.UpdateServices();
+            });
         }
 
         public override void RegisterServices()
@@ -40,13 +50,16 @@ namespace Avalonia.UnitTests
                 .BindToSelf<IGlobalStyles>(this)
                 .Bind<IInputManager>().ToConstant(Services.InputManager)
                 .Bind<IKeyboardDevice>().ToConstant(Services.KeyboardDevice?.Invoke())
-                .Bind<ILayoutManager>().ToConstant(Services.LayoutManager)
-                .Bind<IPclPlatformWrapper>().ToConstant(Services.PlatformWrapper)
+                .Bind<IKeyboardNavigationHandler>().ToConstant(Services.KeyboardNavigation)
+                .Bind<IMouseDevice>().ToConstant(Services.MouseDevice?.Invoke())
+                .Bind<IRuntimePlatform>().ToConstant(Services.Platform)
                 .Bind<IPlatformRenderInterface>().ToConstant(Services.RenderInterface)
                 .Bind<IPlatformThreadingInterface>().ToConstant(Services.ThreadingInterface)
+                .Bind<IScheduler>().ToConstant(Services.Scheduler)
                 .Bind<IStandardCursorFactory>().ToConstant(Services.StandardCursorFactory)
                 .Bind<IStyler>().ToConstant(Services.Styler)
                 .Bind<IWindowingPlatform>().ToConstant(Services.WindowingPlatform)
+                .Bind<PlatformHotkeyConfiguration>().ToSingleton<PlatformHotkeyConfiguration>()
                 .Bind<IApplicationLifecycle>().ToConstant(this);
             var styles = Services.Theme?.Invoke();
 

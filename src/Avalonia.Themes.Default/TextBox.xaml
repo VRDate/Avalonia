@@ -1,8 +1,8 @@
-<Styles xmlns="https://github.com/avaloniaui">
+<Styles xmlns="https://github.com/avaloniaui" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <Style Selector="TextBox">
-    <Setter Property="Background" Value="{StyleResource ThemeBackgroundBrush}"/>
-    <Setter Property="BorderBrush" Value="{StyleResource ThemeBorderMidBrush}"/>
-    <Setter Property="BorderThickness" Value="{StyleResource ThemeBorderThickness}"/>
+    <Setter Property="Background" Value="{DynamicResource ThemeBackgroundBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderMidBrush}"/>
+    <Setter Property="BorderThickness" Value="{DynamicResource ThemeBorderThickness}"/>
     <Setter Property="Padding" Value="4"/>
     <Setter Property="Template">
       <ControlTemplate>
@@ -11,53 +11,58 @@
                 BorderBrush="{TemplateBinding BorderBrush}"
                 BorderThickness="{TemplateBinding BorderThickness}">
           <DockPanel Margin="{TemplateBinding Padding}">
-            
+
             <TextBlock Name="floatingWatermark"
-                       Foreground="{StyleResource ThemeAccentBrush}"
-                       FontSize="{StyleResource FontSizeSmall}"
+                       Foreground="{DynamicResource ThemeAccentBrush}"
+                       FontSize="{DynamicResource FontSizeSmall}"
                        Text="{TemplateBinding Watermark}"
                        DockPanel.Dock="Top">
               <TextBlock.IsVisible>
-                <MultiBinding Converter="{Static BoolConverters.And}">
+                <MultiBinding Converter="{x:Static BoolConverters.And}">
                   <Binding RelativeSource="{RelativeSource TemplatedParent}"
                            Path="UseFloatingWatermark"/>
                   <Binding RelativeSource="{RelativeSource TemplatedParent}"
                            Path="Text"
-                           Converter="{Static StringConverters.NotNullOrEmpty}"/>
+                           Converter="{x:Static StringConverters.IsNotNullOrEmpty}"/>
                 </MultiBinding>
               </TextBlock.IsVisible>
             </TextBlock>
-            
-            <ScrollViewer CanScrollHorizontally="{TemplateBinding CanScrollHorizontally}"
-                          HorizontalScrollBarVisibility="{TemplateBinding (ScrollViewer.HorizontalScrollBarVisibility)}"
-                          VerticalScrollBarVisibility="{TemplateBinding (ScrollViewer.VerticalScrollBarVisibility)}">
-              <Panel>
-                <TextBlock Name="watermark"
-                           Opacity="0.5"
-                           Text="{TemplateBinding Watermark}"
-                           IsVisible="{TemplateBinding Path=Text, Converter={Static StringConverters.NullOrEmpty}}"/>
-                <TextPresenter Name="PART_TextPresenter"
-                               CaretIndex="{TemplateBinding CaretIndex}"
-                               SelectionStart="{TemplateBinding SelectionStart}"
-                               SelectionEnd="{TemplateBinding SelectionEnd}"
-                               Text="{TemplateBinding Text, Mode=TwoWay}"
-                               TextAlignment="{TemplateBinding TextAlignment}"
-                               TextWrapping="{TemplateBinding TextWrapping}"/>
-              </Panel>
-            </ScrollViewer>
-            
+
+            <DataValidationErrors>
+              <ScrollViewer HorizontalScrollBarVisibility="{TemplateBinding (ScrollViewer.HorizontalScrollBarVisibility)}"
+                            VerticalScrollBarVisibility="{TemplateBinding (ScrollViewer.VerticalScrollBarVisibility)}">
+
+                <Panel>
+                  <TextBlock Name="watermark"
+                             Opacity="0.5"
+                             Text="{TemplateBinding Watermark}"
+                             IsVisible="{TemplateBinding Text, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
+                  <TextPresenter Name="PART_TextPresenter"
+                                 Text="{TemplateBinding Text, Mode=TwoWay}"
+                                 CaretIndex="{TemplateBinding CaretIndex}"
+                                 SelectionStart="{TemplateBinding SelectionStart}"
+                                 SelectionEnd="{TemplateBinding SelectionEnd}"
+                                 TextAlignment="{TemplateBinding TextAlignment}"
+                                 TextWrapping="{TemplateBinding TextWrapping}"
+                                 PasswordChar="{TemplateBinding PasswordChar}"/>
+                </Panel>
+              </ScrollViewer>
+            </DataValidationErrors>
           </DockPanel>
         </Border>
       </ControlTemplate>
     </Setter>
   </Style>
   <Style Selector="TextBox:pointerover /template/ Border#border">
-    <Setter Property="BorderBrush" Value="{StyleResource ThemeBorderDarkBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderHighBrush}"/>
   </Style>
   <Style Selector="TextBox:focus /template/ Border#border">
-    <Setter Property="BorderBrush" Value="{StyleResource ThemeBorderDarkBrush}"/>
+    <Setter Property="BorderBrush" Value="{DynamicResource ThemeBorderHighBrush}"/>
   </Style>
-  <Style Selector="TextBox:invalid /template/ Border#border">
-    <Setter Property="BorderBrush" Value="Red"/>
+  <Style Selector="TextBox:error /template/ Border#border">
+    <Setter Property="BorderBrush" Value="{DynamicResource ErrorBrush}"/>
+  </Style>
+  <Style Selector="TextBox">
+    <Setter Property="Cursor" Value="IBeam" />
   </Style>
 </Styles>

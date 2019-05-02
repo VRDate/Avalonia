@@ -1,17 +1,9 @@
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
 using System.Reactive.Disposables;
-using System.Text;
 using System.Threading;
-using Android.App;
-using Android.Content;
 using Android.OS;
-using Android.Runtime;
-using Android.Views;
-using Android.Widget;
 using Avalonia.Platform;
+using Avalonia.Threading;
 
 namespace Avalonia.Android
 {
@@ -29,7 +21,7 @@ namespace Avalonia.Android
             return;
         }
 
-        public IDisposable StartTimer(TimeSpan interval, Action tick)
+        public IDisposable StartTimer(DispatcherPriority priority, TimeSpan interval, Action tick)
         {
             if (interval.TotalMilliseconds < 10)
                 interval = TimeSpan.FromMilliseconds(10);
@@ -51,10 +43,16 @@ namespace Avalonia.Android
                     scheduled = true;
                     EnsureInvokeOnMainThread(() =>
                     {
-                        tick();
-                        lock (l)
+                        try
                         {
-                            scheduled = false;
+                            tick();
+                        }
+                        finally
+                        {
+                            lock (l)
+                            {
+                                scheduled = false;
+                            }
                         }
                     });
                 }
@@ -72,13 +70,12 @@ namespace Avalonia.Android
 
         private void EnsureInvokeOnMainThread(Action action) => _handler.Post(action);
 
-        public void Signal()
+        public void Signal(DispatcherPriority prio)
         {
-            EnsureInvokeOnMainThread(() => Signaled?.Invoke());
+            EnsureInvokeOnMainThread(() => Signaled?.Invoke(null));
         }
 
         public bool CurrentThreadIsLoopThread => Looper.MainLooper.Thread.Equals(Java.Lang.Thread.CurrentThread());
-        public event Action Signaled;
+        public event Action<DispatcherPriority?> Signaled;
     }
 }
- 

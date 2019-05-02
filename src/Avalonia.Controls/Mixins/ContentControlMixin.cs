@@ -3,13 +3,13 @@
 
 using System;
 using System.Linq;
+using System.Reactive.Disposables;
 using System.Runtime.CompilerServices;
 using Avalonia.Collections;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
-using Avalonia.Styling;
 
 namespace Avalonia.Controls.Mixins
 {
@@ -19,8 +19,8 @@ namespace Avalonia.Controls.Mixins
     /// <para>
     /// The <see cref="ContentControlMixin"/> adds behavior to a control which acts as a content
     /// control such as <see cref="ContentControl"/> and <see cref="HeaderedItemsControl"/>. It
-    /// updates keeps the control's logical children in sync with the content being displayed by
-    /// the control.
+    /// keeps the control's logical children in sync with the content being displayed by the
+    /// control.
     /// </para>
     public class ContentControlMixin
     {
@@ -49,27 +49,42 @@ namespace Avalonia.Controls.Mixins
             Contract.Requires<ArgumentNullException>(content != null);
             Contract.Requires<ArgumentNullException>(logicalChildrenSelector != null);
 
-            EventHandler<RoutedEventArgs> templateApplied = (s, ev) =>
+            void ChildChanging(object s, AvaloniaPropertyChangedEventArgs e)
             {
-                var sender = s as TControl;
+                if (s is IControl sender && sender?.TemplatedParent is TControl parent)
+                {
+                    UpdateLogicalChild(
+                        sender,
+                        logicalChildrenSelector(parent),
+                        e.OldValue,
+                        null);
+                }
+            }
 
-                if (sender != null)
+            void TemplateApplied(object s, RoutedEventArgs ev)
+            {
+                if (s is TControl sender)
                 {
                     var e = (TemplateAppliedEventArgs)ev;
-                    var presenter = (IControl)e.NameScope.Find(presenterName);
+                    var presenter = e.NameScope.Find(presenterName) as IContentPresenter;
 
                     if (presenter != null)
                     {
                         presenter.ApplyTemplate();
 
                         var logicalChildren = logicalChildrenSelector(sender);
-                        var subscription = presenter
-                            .GetObservableWithHistory(ContentPresenter.ChildProperty)
-                            .Subscribe(child => UpdateLogicalChild(
+                        var subscription = new CompositeDisposable();
+
+                        presenter.ChildChanging += ChildChanging;
+                        subscription.Add(Disposable.Create(() => presenter.ChildChanging -= ChildChanging));
+
+                        subscription.Add(presenter
+                            .GetPropertyChangedObservable(ContentPresenter.ChildProperty)
+                            .Subscribe(c => UpdateLogicalChild(
                                 sender,
-                                logicalChildren, 
-                                child.Item1, 
-                                child.Item2));
+                                logicalChildren,
+                                null,
+                                c.NewValue)));
 
                         UpdateLogicalChild(
                             sender,
@@ -77,21 +92,25 @@ namespace Avalonia.Controls.Mixins
                             null,
                             presenter.GetValue(ContentPresenter.ChildProperty));
 
+                        if (subscriptions.Value.TryGetValue(sender, out IDisposable previousSubscription))
+                        {
+                            subscription = new CompositeDisposable(previousSubscription, subscription);
+                            subscriptions.Value.Remove(sender);
+                        }
+
                         subscriptions.Value.Add(sender, subscription);
                     }
                 }
-            };
+            }
 
             TemplatedControl.TemplateAppliedEvent.AddClassHandler(
                 typeof(TControl),
-                templateApplied,
+                TemplateApplied,
                 RoutingStrategies.Direct);
 
             content.Changed.Subscribe(e =>
             {
-                var sender = e.Sender as TControl;
-
-                if (sender != null)
+                if (e.Sender is TControl sender)
                 {
                     var logicalChildren = logicalChildrenSelector(sender);
                     UpdateLogicalChild(sender, logicalChildren, e.OldValue, e.NewValue);
@@ -100,9 +119,7 @@ namespace Avalonia.Controls.Mixins
 
             Control.TemplatedParentProperty.Changed.Subscribe(e =>
             {
-                var sender = e.Sender as TControl;
-
-                if (sender != null)
+                if (e.Sender is TControl sender)
                 {
                     var logicalChild = logicalChildrenSelector(sender).FirstOrDefault() as IControl;
                     logicalChild?.SetValue(Control.TemplatedParentProperty, sender.TemplatedParent);
@@ -111,13 +128,9 @@ namespace Avalonia.Controls.Mixins
 
             TemplatedControl.TemplateProperty.Changed.Subscribe(e =>
             {
-                var sender = e.Sender as TControl;
-
-                if (sender != null)
+                if (e.Sender is TControl sender)
                 {
-                    IDisposable subscription;
-
-                    if (subscriptions.Value.TryGetValue(sender, out subscription))
+                    if (subscriptions.Value.TryGetValue(sender, out IDisposable subscription))
                     {
                         subscription.Dispose();
                         subscriptions.Value.Remove(sender);
@@ -134,9 +147,7 @@ namespace Avalonia.Controls.Mixins
         {
             if (oldValue != newValue)
             {
-                var child = oldValue as IControl;
-
-                if (child != null)
+                if (oldValue is IControl child)
                 {
                     logicalChildren.Remove(child);
                 }

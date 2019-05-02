@@ -4,16 +4,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using JetBrains.dotMemoryUnit;
-using Avalonia.Collections;
 using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Diagnostics;
 using Avalonia.Layout;
-using Avalonia.Styling;
+using Avalonia.Platform;
+using Avalonia.Rendering;
 using Avalonia.UnitTests;
 using Avalonia.VisualTree;
+using JetBrains.dotMemoryUnit;
+using Moq;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -30,7 +30,7 @@ namespace Avalonia.LeakTests
         [Fact]
         public void Canvas_Is_Freed()
         {
-            using (UnitTestApplication.Start(TestServices.StyledWindow))
+            using (Start())
             {
                 Func<Window> run = () =>
                 {
@@ -39,13 +39,15 @@ namespace Avalonia.LeakTests
                         Content = new Canvas()
                     };
 
+                    window.Show();
+
                     // Do a layout and make sure that Canvas gets added to visual tree.
-                    LayoutManager.Instance.ExecuteInitialLayoutPass(window);
+                    window.LayoutManager.ExecuteInitialLayoutPass(window);
                     Assert.IsType<Canvas>(window.Presenter.Child);
 
                     // Clear the content and ensure the Canvas is removed.
                     window.Content = null;
-                    LayoutManager.Instance.ExecuteLayoutPass();
+                    window.LayoutManager.ExecuteLayoutPass();
                     Assert.Null(window.Presenter.Child);
 
                     return window;
@@ -61,7 +63,7 @@ namespace Avalonia.LeakTests
         [Fact]
         public void Named_Canvas_Is_Freed()
         {
-            using (UnitTestApplication.Start(TestServices.StyledWindow))
+            using (Start())
             {
                 Func<Window> run = () =>
                 {
@@ -73,14 +75,16 @@ namespace Avalonia.LeakTests
                         }
                     };
 
+                    window.Show();
+
                     // Do a layout and make sure that Canvas gets added to visual tree.
-                    LayoutManager.Instance.ExecuteInitialLayoutPass(window);
+                    window.LayoutManager.ExecuteInitialLayoutPass(window);
                     Assert.IsType<Canvas>(window.Find<Canvas>("foo"));
                     Assert.IsType<Canvas>(window.Presenter.Child);
 
                     // Clear the content and ensure the Canvas is removed.
                     window.Content = null;
-                    LayoutManager.Instance.ExecuteLayoutPass();
+                    window.LayoutManager.ExecuteLayoutPass();
                     Assert.Null(window.Presenter.Child);
 
                     return window;
@@ -96,7 +100,7 @@ namespace Avalonia.LeakTests
         [Fact]
         public void ScrollViewer_With_Content_Is_Freed()
         {
-            using (UnitTestApplication.Start(TestServices.StyledWindow))
+            using (Start())
             {
                 Func<Window> run = () =>
                 {
@@ -108,15 +112,17 @@ namespace Avalonia.LeakTests
                         }
                     };
 
+                    window.Show();
+
                     // Do a layout and make sure that ScrollViewer gets added to visual tree and its 
                     // template applied.
-                    LayoutManager.Instance.ExecuteInitialLayoutPass(window);
+                    window.LayoutManager.ExecuteInitialLayoutPass(window);
                     Assert.IsType<ScrollViewer>(window.Presenter.Child);
                     Assert.IsType<Canvas>(((ScrollViewer)window.Presenter.Child).Presenter.Child);
 
                     // Clear the content and ensure the ScrollViewer is removed.
                     window.Content = null;
-                    LayoutManager.Instance.ExecuteLayoutPass();
+                    window.LayoutManager.ExecuteLayoutPass();
                     Assert.Null(window.Presenter.Child);
 
                     return window;
@@ -134,7 +140,7 @@ namespace Avalonia.LeakTests
         [Fact]
         public void TextBox_Is_Freed()
         {
-            using (UnitTestApplication.Start(TestServices.StyledWindow))
+            using (Start())
             {
                 Func<Window> run = () =>
                 {
@@ -143,15 +149,17 @@ namespace Avalonia.LeakTests
                         Content = new TextBox()
                     };
 
+                    window.Show();
+
                     // Do a layout and make sure that TextBox gets added to visual tree and its 
                     // template applied.
-                    LayoutManager.Instance.ExecuteInitialLayoutPass(window);
+                    window.LayoutManager.ExecuteInitialLayoutPass(window);
                     Assert.IsType<TextBox>(window.Presenter.Child);
-                    Assert.NotEqual(0, window.Presenter.Child.GetVisualChildren().Count());
+                    Assert.NotEmpty(window.Presenter.Child.GetVisualChildren());
 
                     // Clear the content and ensure the TextBox is removed.
                     window.Content = null;
-                    LayoutManager.Instance.ExecuteLayoutPass();
+                    window.LayoutManager.ExecuteLayoutPass();
                     Assert.Null(window.Presenter.Child);
 
                     return window;
@@ -167,7 +175,7 @@ namespace Avalonia.LeakTests
         [Fact]
         public void TextBox_With_Xaml_Binding_Is_Freed()
         {
-            using (UnitTestApplication.Start(TestServices.StyledWindow))
+            using (Start())
             {
                 Func<Window> run = () =>
                 {
@@ -177,7 +185,7 @@ namespace Avalonia.LeakTests
                         Content = new TextBox()
                     };
 
-                    var binding = new Avalonia.Markup.Xaml.Data.Binding
+                    var binding = new Avalonia.Data.Binding
                     {
                         Path = "Name"
                     };
@@ -185,16 +193,18 @@ namespace Avalonia.LeakTests
                     var textBox = (TextBox)window.Content;
                     textBox.Bind(TextBox.TextProperty, binding);
 
+                    window.Show();
+
                     // Do a layout and make sure that TextBox gets added to visual tree and its 
                     // Text property set.
-                    LayoutManager.Instance.ExecuteInitialLayoutPass(window);
+                    window.LayoutManager.ExecuteInitialLayoutPass(window);
                     Assert.IsType<TextBox>(window.Presenter.Child);
                     Assert.Equal("foo", ((TextBox)window.Presenter.Child).Text);
 
                     // Clear the content and DataContext and ensure the TextBox is removed.
                     window.Content = null;
                     window.DataContext = null;
-                    LayoutManager.Instance.ExecuteLayoutPass();
+                    window.LayoutManager.ExecuteLayoutPass();
                     Assert.Null(window.Presenter.Child);
 
                     return window;
@@ -212,7 +222,7 @@ namespace Avalonia.LeakTests
         [Fact]
         public void TextBox_Class_Listeners_Are_Freed()
         {
-            using (UnitTestApplication.Start(TestServices.StyledWindow))
+            using (Start())
             {
                 TextBox textBox;
 
@@ -221,9 +231,11 @@ namespace Avalonia.LeakTests
                     Content = textBox = new TextBox()
                 };
 
+                window.Show();
+
                 // Do a layout and make sure that TextBox gets added to visual tree and its 
                 // template applied.
-                LayoutManager.Instance.ExecuteInitialLayoutPass(window);
+                window.LayoutManager.ExecuteInitialLayoutPass(window);
                 Assert.Same(textBox, window.Presenter.Child);
 
                 // Get the border from the TextBox template.
@@ -235,7 +247,7 @@ namespace Avalonia.LeakTests
 
                 // Clear the content and ensure the TextBox is removed.
                 window.Content = null;
-                LayoutManager.Instance.ExecuteLayoutPass();
+                window.LayoutManager.ExecuteLayoutPass();
                 Assert.Null(window.Presenter.Child);
 
                 // Check that the TextBox has no subscriptions to its Classes collection.
@@ -246,7 +258,7 @@ namespace Avalonia.LeakTests
         [Fact]
         public void TreeView_Is_Freed()
         {
-            using (UnitTestApplication.Start(TestServices.StyledWindow))
+            using (Start())
             {
                 Func<Window> run = () =>
                 {
@@ -264,7 +276,7 @@ namespace Avalonia.LeakTests
                     {
                         Content = target = new TreeView
                         {
-                            DataTemplates = new DataTemplates
+                            DataTemplates =
                             {
                                 new FuncTreeDataTemplate<Node>(
                                     x => new TextBlock { Text = x.Name },
@@ -274,13 +286,15 @@ namespace Avalonia.LeakTests
                         }
                     };
 
+                    window.Show();
+
                     // Do a layout and make sure that TreeViewItems get realized.
-                    LayoutManager.Instance.ExecuteInitialLayoutPass(window);
-                    Assert.Equal(1, target.ItemContainerGenerator.Containers.Count());
+                    window.LayoutManager.ExecuteInitialLayoutPass(window);
+                    Assert.Single(target.ItemContainerGenerator.Containers);
 
                     // Clear the content and ensure the TreeView is removed.
                     window.Content = null;
-                    LayoutManager.Instance.ExecuteLayoutPass();
+                    window.LayoutManager.ExecuteLayoutPass();
                     Assert.Null(window.Presenter.Child);
 
                     return window;
@@ -293,25 +307,107 @@ namespace Avalonia.LeakTests
             }
         }
 
-        private class TestTemplatedControl : TemplatedControl
-        {
-            public static readonly StyledProperty<int> IsCanvasVisibleProperty =
-                AvaloniaProperty.Register<TestTemplatedControl, int>("IsCanvasVisible");
 
-            public TestTemplatedControl()
+        [Fact]
+        public void Slider_Is_Freed()
+        {
+            using (Start())
             {
-                Template = new FuncControlTemplate<TestTemplatedControl>(parent =>
-                    new Canvas
+                Func<Window> run = () =>
+                {
+                    var window = new Window
                     {
-                        [~IsVisibleProperty] = parent[~IsCanvasVisibleProperty]
-                    });
+                        Content = new Slider()
+                    };
+
+                    window.Show();
+
+                    // Do a layout and make sure that Slider gets added to visual tree.
+                    window.LayoutManager.ExecuteInitialLayoutPass(window);
+                    Assert.IsType<Slider>(window.Presenter.Child);
+
+                    // Clear the content and ensure the Slider is removed.
+                    window.Content = null;
+                    window.LayoutManager.ExecuteLayoutPass();
+                    Assert.Null(window.Presenter.Child);
+
+                    return window;
+                };
+
+                var result = run();
+
+                dotMemory.Check(memory =>
+                    Assert.Equal(0, memory.GetObjects(where => where.Type.Is<Slider>()).ObjectsCount));
             }
+        }
+
+        [Fact]
+        public void RendererIsDisposed()
+        {
+            using (Start())
+            {
+                var renderer = new Mock<IRenderer>();
+                renderer.Setup(x => x.Dispose());
+                var impl = new Mock<IWindowImpl>();
+                impl.SetupGet(x => x.Scaling).Returns(1);
+                impl.SetupProperty(x => x.Closed);
+                impl.Setup(x => x.CreateRenderer(It.IsAny<IRenderRoot>())).Returns(renderer.Object);
+                impl.Setup(x => x.Dispose()).Callback(() => impl.Object.Closed());
+
+                AvaloniaLocator.CurrentMutable.Bind<IWindowingPlatform>()
+                    .ToConstant(new MockWindowingPlatform(() => impl.Object));
+                var window = new Window()
+                {
+                    Content = new Button()
+                };
+                window.Show();
+                window.Close();
+                renderer.Verify(r => r.Dispose());
+            }
+        }
+
+        private IDisposable Start()
+        {
+            return UnitTestApplication.Start(TestServices.StyledWindow);
         }
 
         private class Node
         {
             public string Name { get; set; }
             public IEnumerable<Node> Children { get; set; }
+        }
+
+        private class NullRenderer : IRenderer
+        {
+            public bool DrawFps { get; set; }
+            public bool DrawDirtyRects { get; set; }
+            public event EventHandler<SceneInvalidatedEventArgs> SceneInvalidated;
+
+            public void AddDirty(IVisual visual)
+            {
+            }
+
+            public void Dispose()
+            {
+            }
+
+            public IEnumerable<IVisual> HitTest(Point p, IVisual root, Func<IVisual, bool> filter) => null;
+
+            public void Paint(Rect rect)
+            {
+            }
+
+            public void Resized(Size size)
+            {
+            }
+
+            public void Start()
+            {
+            }
+
+            public void Stop()
+            {
+            }
         }
     }
 }

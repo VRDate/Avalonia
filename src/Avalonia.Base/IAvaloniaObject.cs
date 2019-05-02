@@ -17,6 +17,11 @@ namespace Avalonia
         event EventHandler<AvaloniaPropertyChangedEventArgs> PropertyChanged;
 
         /// <summary>
+        /// Raised when an inheritable <see cref="AvaloniaProperty"/> value changes on this object.
+        /// </summary>
+        event EventHandler<AvaloniaPropertyChangedEventArgs> InheritablePropertyChanged;
+
+        /// <summary>
         /// Gets a <see cref="AvaloniaProperty"/> value.
         /// </summary>
         /// <param name="property">The property.</param>
@@ -30,6 +35,13 @@ namespace Avalonia
         /// <param name="property">The property.</param>
         /// <returns>The value.</returns>
         T GetValue<T>(AvaloniaProperty<T> property);
+
+        /// <summary>
+        /// Checks whether a <see cref="AvaloniaProperty"/> is animating.
+        /// </summary>
+        /// <param name="property">The property.</param>
+        /// <returns>True if the property is animating, otherwise false.</returns>
+        bool IsAnimating(AvaloniaProperty property);
 
         /// <summary>
         /// Checks whether a <see cref="AvaloniaProperty"/> is set on this object.

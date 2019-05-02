@@ -6,6 +6,9 @@ using Avalonia.Styling;
 
 namespace Avalonia.Controls
 {
+    /// <summary>
+    /// Provides the base class for defining a new control that encapsulates related existing controls and provides its own logic.
+    /// </summary>
     public class UserControl : ContentControl, IStyleable, INameScope
     {
         private readonly NameScope _nameScope = new NameScope();
@@ -23,8 +26,6 @@ namespace Avalonia.Controls
             add { _nameScope.Unregistered += value; }
             remove { _nameScope.Unregistered -= value; }
         }
-
-        Type IStyleable.StyleKey => typeof(ContentControl);
 
         /// <inheritdoc/>
         void INameScope.Register(string name, object element)

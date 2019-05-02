@@ -15,7 +15,7 @@ namespace Avalonia.Controls
     public static class ControlExtensions
     {
         /// <summary>
-        /// Tries to being the control into view.
+        /// Tries to bring the control into view.
         /// </summary>
         /// <param name="control">The control.</param>
         public static void BringIntoView(this IControl control)
@@ -26,7 +26,7 @@ namespace Avalonia.Controls
         }
 
         /// <summary>
-        /// Tries to being the control into view.
+        /// Tries to bring the control into view.
         /// </summary>
         /// <param name="control">The control.</param>
         /// <param name="rect">The area of the control to being into view.</param>
@@ -64,21 +64,6 @@ namespace Avalonia.Controls
             }
 
             return nameScope.Find<T>(name);
-        }
-
-        /// <summary>
-        /// Finds the name scope for a control by searching up the logical tree.
-        /// </summary>
-        /// <param name="control">The control.</param>
-        /// <returns>The control's name scope, or null if not found.</returns>
-        public static INameScope FindNameScope(this IControl control)
-        {
-            Contract.Requires<ArgumentNullException>(control != null);
-
-            return control.GetSelfAndLogicalAncestors()
-                .OfType<Control>()
-                .Select(x => (x as INameScope) ?? NameScope.GetNameScope(x))
-                .FirstOrDefault(x => x != null);
         }
 
         /// <summary>

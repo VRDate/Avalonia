@@ -11,14 +11,6 @@ namespace Avalonia.Controls.Platform
             => AvaloniaLocator.Current.GetService<IPlatformSettings>();
 
         static bool s_designerMode;
-        private static double _designerScalingFactor = 1;
-
-        public static IRenderTarget CreateRenderTarget(ITopLevelImpl window)
-        {
-            return AvaloniaLocator.Current
-                .GetService<IPlatformRenderInterface>()
-                .CreateRenderer(window.Handle);
-        }
 
         public static IDisposable DesignerMode()
         {
@@ -28,7 +20,6 @@ namespace Avalonia.Controls.Platform
 
         public static void SetDesignerScalingFactor(double factor)
         {
-            _designerScalingFactor = factor;
         }
 
         public static IWindowImpl CreateWindow()
@@ -40,7 +31,15 @@ namespace Avalonia.Controls.Platform
                 throw new Exception("Could not CreateWindow(): IWindowingPlatform is not registered.");
             }
 
-            return s_designerMode ? platform.CreateEmbeddableWindow() : platform.CreateWindow();
+            return s_designerMode ? (IWindowImpl)platform.CreateEmbeddableWindow() : platform.CreateWindow();
+        }
+
+        public static IEmbeddableWindowImpl CreateEmbeddableWindow()
+        {
+            var platform = AvaloniaLocator.Current.GetService<IWindowingPlatform>();
+            if (platform == null)
+                throw new Exception("Could not CreateEmbeddableWindow(): IWindowingPlatform is not registered.");
+            return platform.CreateEmbeddableWindow();
         }
 
         public static IPopupImpl CreatePopup()

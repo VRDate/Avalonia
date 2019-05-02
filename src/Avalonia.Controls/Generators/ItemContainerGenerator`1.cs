@@ -2,8 +2,6 @@
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
 using System;
-using System.Linq.Expressions;
-using System.Reflection;
 using Avalonia.Controls.Templates;
 using Avalonia.Data;
 
@@ -33,6 +31,9 @@ namespace Avalonia.Controls.Generators
             ContentProperty = contentProperty;
             ContentTemplateProperty = contentTemplateProperty;
         }
+
+        /// <inheritdoc/>
+        public override Type ContainerType => typeof(T);
 
         /// <summary>
         /// Gets the container's Content property.

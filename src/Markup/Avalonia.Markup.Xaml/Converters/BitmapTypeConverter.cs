@@ -3,50 +3,33 @@
 
 using System;
 using System.Globalization;
-using OmniXaml.TypeConversion;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 
 namespace Avalonia.Markup.Xaml.Converters
 {
-    public class BitmapTypeConverter : ITypeConverter
+    using Portable.Xaml.ComponentModel;
+	using System.ComponentModel;
+
+    public class BitmapTypeConverter : TypeConverter
     {
-        public bool CanConvertFrom(IValueContext context, Type sourceType)
+        public override bool CanConvertFrom(ITypeDescriptorContext context, Type sourceType)
         {
             return sourceType == typeof(string);
         }
 
-        public bool CanConvertTo(IValueContext context, Type destinationType)
+        public override object ConvertFrom(ITypeDescriptorContext context, CultureInfo culture, object value)
         {
-            return false;
-        }
+            var s = (string)value;
+            var uri = s.StartsWith("/")
+                ? new Uri(s, UriKind.Relative)
+                : new Uri(s, UriKind.RelativeOrAbsolute);
 
-        public object ConvertFrom(IValueContext context, CultureInfo culture, object value)
-        {
-            var uri = new Uri((string)value, UriKind.RelativeOrAbsolute);
-            var baseUri = GetBaseUri(context);
-            var scheme = uri.IsAbsoluteUri ? uri.Scheme : "file";
+            if(uri.IsAbsoluteUri && uri.IsFile)
+                return new Bitmap(uri.LocalPath);
 
-            switch (scheme)
-            {
-                case "file":
-                    return new Bitmap((string)value);
-                default:
-                    var assets = AvaloniaLocator.Current.GetService<IAssetLoader>();
-                    return new Bitmap(assets.Open(uri, baseUri));
-            }
-        }
-
-        public object ConvertTo(IValueContext context, CultureInfo culture, object value, Type destinationType)
-        {
-            throw new NotImplementedException();
-        }
-
-        private Uri GetBaseUri(IValueContext context)
-        {
-            object result;
-            context.ParsingDictionary.TryGetValue("Uri", out result);
-            return result as Uri;
+            var assets = AvaloniaLocator.Current.GetService<IAssetLoader>();
+            return new Bitmap(assets.Open(uri, context.GetBaseUri()));
         }
     }
 }

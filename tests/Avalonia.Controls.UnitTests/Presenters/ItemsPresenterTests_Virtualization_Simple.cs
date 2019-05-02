@@ -12,6 +12,8 @@ using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Input;
+using Avalonia.Layout;
+using Avalonia.Platform;
 using Avalonia.Rendering;
 using Avalonia.UnitTests;
 using Xunit;
@@ -49,7 +51,7 @@ namespace Avalonia.Controls.UnitTests.Presenters
             target.Measure(new Size(100, 100));
             target.Arrange(new Rect(0, 0, 100, 100));
 
-            Assert.Equal(new Size(0, 10), ((ILogicalScrollable)target).Viewport);
+            Assert.Equal(new Size(100, 10), ((ILogicalScrollable)target).Viewport);
         }
 
         [Fact]
@@ -61,7 +63,7 @@ namespace Avalonia.Controls.UnitTests.Presenters
             target.Measure(new Size(100, 100));
             target.Arrange(new Rect(0, 0, 100, 100));
 
-            Assert.Equal(new Size(10, 0), ((ILogicalScrollable)target).Viewport);
+            Assert.Equal(new Size(10, 100), ((ILogicalScrollable)target).Viewport);
         }
 
         [Fact]
@@ -146,7 +148,7 @@ namespace Avalonia.Controls.UnitTests.Presenters
             target.Measure(new Size(100, 95));
             target.Arrange(new Rect(0, 0, 100, 95));
 
-            Assert.Equal(new Size(0, 9), ((ILogicalScrollable)target).Viewport);
+            Assert.Equal(new Size(100, 9), ((ILogicalScrollable)target).Viewport);
         }
 
         [Fact]
@@ -201,6 +203,30 @@ namespace Avalonia.Controls.UnitTests.Presenters
             expected.Insert(1, "Inserted");
             expected.RemoveAt(expected.Count - 1);
 
+            actual = target.Panel.Children.Select(x => x.DataContext).ToList();
+            Assert.Equal(expected, actual);
+        }
+
+        [Fact]
+        public void Inserting_Items_Before_Visibile_Containers_Should_Update_Containers()
+        {
+            var target = CreateTarget();
+
+            target.ApplyTemplate();
+            target.Measure(new Size(100, 100));
+            target.Arrange(new Rect(0, 0, 100, 100));
+
+            ((ILogicalScrollable)target).Offset = new Vector(0, 5);
+
+            var expected = Enumerable.Range(5, 10).Select(x => $"Item {x}").ToList();
+            var items = (ObservableCollection<string>)target.Items;
+            var actual = target.Panel.Children.Select(x => x.DataContext).ToList();
+
+            Assert.Equal(expected, actual);
+
+            items.Insert(0, "Inserted");
+
+            expected = Enumerable.Range(4, 10).Select(x => $"Item {x}").ToList();
             actual = target.Panel.Children.Select(x => x.DataContext).ToList();
             Assert.Equal(expected, actual);
         }
@@ -327,6 +353,27 @@ namespace Avalonia.Controls.UnitTests.Presenters
         }
 
         [Fact]
+        public void Measuring_To_Infinity_When_Scrolled_To_End_Should_Not_Throw()
+        {
+            var target = CreateTarget(useAvaloniaList: true);
+
+            target.ApplyTemplate();
+            target.Measure(new Size(100, 100));
+            target.Arrange(new Rect(0, 0, 100, 100));
+
+            ((ILogicalScrollable)target).Offset = new Vector(0, 10);
+
+            // Check for issue #589: this should not throw.
+            target.Measure(Size.Infinity);
+
+            var expected = Enumerable.Range(0, 20).Select(x => $"Item {x}").ToList();
+            var items = (AvaloniaList<string>)target.Items;
+            var actual = target.Panel.Children.Select(x => x.DataContext).ToList();
+
+            Assert.Equal(expected, actual);
+        }
+
+        [Fact]
         public void Replacing_Items_Should_Update_Containers()
         {
             var target = CreateTarget();
@@ -414,6 +461,38 @@ namespace Avalonia.Controls.UnitTests.Presenters
         }
 
         [Fact]
+        public void Inserting_Then_Removing_Should_Add_Remove_Containers()
+        {
+            var items = new AvaloniaList<string>(Enumerable.Range(0, 5).Select(x => $"Item {x}"));
+            var toAdd = Enumerable.Range(0, 3).Select(x => $"Added Item {x}").ToArray();
+            var target = new ItemsPresenter
+            {
+                VirtualizationMode = ItemVirtualizationMode.None,
+                Items = items,
+                ItemTemplate = new FuncDataTemplate<string>(x => new TextBlock { Height = 10 }),
+            };
+
+            target.ApplyTemplate();
+
+            Assert.Equal(items.Count, target.Panel.Children.Count);
+
+            int addIndex = 1;
+            foreach (var item in toAdd)
+            {
+                items.Insert(addIndex++, item);
+            }
+
+            Assert.Equal(items.Count, target.Panel.Children.Count);
+
+            foreach (var item in toAdd)
+            {
+                items.Remove(item);
+            }
+
+            Assert.Equal(items.Count, target.Panel.Children.Count);
+        }
+
+        [Fact]
         public void Reassigning_Items_Should_Remove_Containers()
         {
             var target = CreateTarget(itemCount: 6);
@@ -423,7 +502,6 @@ namespace Avalonia.Controls.UnitTests.Presenters
             target.Arrange(new Rect(0, 0, 100, 100));
 
             var expected = Enumerable.Range(0, 6).Select(x => $"Item {x}").ToList();
-            var items = (ObservableCollection<string>)target.Items;
             var actual = target.Panel.Children.Select(x => x.DataContext).ToList();
 
             Assert.Equal(expected, actual);
@@ -484,16 +562,210 @@ namespace Avalonia.Controls.UnitTests.Presenters
             Assert.Equal(0, ((IVirtualizingPanel)target.Panel).PixelOffset);
         }
 
+        [Fact]
+        public void Scrolling_To_Item_In_Zero_Sized_Presenter_Doesnt_Throw()
+        {
+            using (UnitTestApplication.Start(new TestServices()))
+            {
+                var target = CreateTarget(itemCount: 10);
+                var items = (IList<string>)target.Items;
+                target.ApplyTemplate();
+                target.Measure(Size.Empty);
+                target.Arrange(Rect.Empty);
+
+                // Check for issue #591: this should not throw.
+                target.ScrollIntoView(items[0]);
+            }
+        }
+
+        [Fact]
+        public void InsertRange_Items_Should_Update_Containers()
+        {
+            var target = CreateTarget(useAvaloniaList: true);
+
+            target.ApplyTemplate();
+            target.Measure(new Size(100, 100));
+            target.Arrange(new Rect(0, 0, 100, 100));
+
+            var expected = Enumerable.Range(0, 10).Select(x => $"Item {x}").ToList();
+            var items = (AvaloniaList<string>)target.Items;
+            var actual = target.Panel.Children.Select(x => x.DataContext).ToList();
+
+            Assert.Equal(expected, actual);
+
+            var toAdd = Enumerable.Range(0, 3).Select(x => $"New Item {x}").ToList();
+
+            int index = 1;
+
+            items.InsertRange(index, toAdd);
+            expected.InsertRange(index, toAdd);
+            expected.RemoveRange(10, toAdd.Count);
+
+            actual = target.Panel.Children.Select(x => x.DataContext).ToList();
+            Assert.Equal(expected, actual);
+        }
+
+        [Fact]
+        public void InsertRange_Items_Before_Last_Should_Update_Containers()
+        {
+            var target = CreateTarget(useAvaloniaList: true);
+
+            target.ApplyTemplate();
+            target.Measure(new Size(100, 100));
+            target.Arrange(new Rect(0, 0, 100, 100));
+
+            var expected = Enumerable.Range(0, 10).Select(x => $"Item {x}").ToList();
+            var items = (AvaloniaList<string>)target.Items;
+            var actual = target.Panel.Children.Select(x => x.DataContext).ToList();
+
+            Assert.Equal(expected, actual);
+
+            var toAdd = Enumerable.Range(0, 3).Select(x => $"New Item {x}").ToList();
+
+            int index = 8;
+
+            items.InsertRange(index, toAdd);
+            expected.InsertRange(index, toAdd);
+            expected.RemoveRange(10, toAdd.Count);
+
+            actual = target.Panel.Children.Select(x => x.DataContext).ToList();
+            Assert.Equal(expected, actual);
+        }
+
+        [Fact]
+        public void RemoveRange_Items_Should_Update_Containers()
+        {
+            var target = CreateTarget(useAvaloniaList: true);
+
+            target.ApplyTemplate();
+            target.Measure(new Size(100, 100));
+            target.Arrange(new Rect(0, 0, 100, 100));
+
+            var expected = Enumerable.Range(0, 13).Select(x => $"Item {x}").ToList();
+            var items = (AvaloniaList<string>)target.Items;
+            var actual = target.Panel.Children.Select(x => x.DataContext).ToList();
+
+            Assert.Equal(expected.Take(10), actual);
+
+            int index = 5;
+            int count = 3;
+
+            items.RemoveRange(index, count);
+            expected.RemoveRange(index, count);
+
+            actual = target.Panel.Children.Select(x => x.DataContext).ToList();
+            Assert.Equal(expected, actual);
+        }
+
+        [Fact]
+        public void RemoveRange_Items_Before_Last_Should_Update_Containers()
+        {
+            var target = CreateTarget(useAvaloniaList: true);
+
+            target.ApplyTemplate();
+            target.Measure(new Size(100, 100));
+            target.Arrange(new Rect(0, 0, 100, 100));
+
+            var expected = Enumerable.Range(0, 13).Select(x => $"Item {x}").ToList();
+            var items = (AvaloniaList<string>)target.Items;
+            var actual = target.Panel.Children.Select(x => x.DataContext).ToList();
+
+            Assert.Equal(expected.Take(10), actual);
+
+            int index = 8;
+            int count = 3;
+
+            items.RemoveRange(index, count);
+            expected.RemoveRange(index, count);
+
+            actual = target.Panel.Children.Select(x => x.DataContext).ToList();
+            Assert.Equal(expected, actual);
+        }
+
+        [Fact]
+        public void Should_Add_Containers_For_Items_After_Clear()
+        {
+            var target = CreateTarget(itemCount: 10);
+            var defaultItems = (IList<string>)target.Items;
+            var items = new AvaloniaList<string>(defaultItems);
+            target.Items = items;
+
+            target.ApplyTemplate();
+            target.Measure(new Size(100, 100));
+            target.Arrange(new Rect(target.DesiredSize));
+
+            Assert.Equal(10, target.Panel.Children.Count);
+
+            items.Clear();
+
+            target.Panel.Measure(new Size(100, 100));
+            target.Panel.Arrange(new Rect(target.Panel.DesiredSize));
+
+            target.Measure(new Size(100, 100));
+            target.Arrange(new Rect(target.DesiredSize));
+
+            Assert.Empty(target.Panel.Children);
+
+            items.AddRange(defaultItems.Select(s => s + " new"));
+
+            target.Panel.Measure(new Size(100, 100));
+            target.Panel.Arrange(new Rect(target.Panel.DesiredSize));
+
+            target.Measure(new Size(100, 100));
+            target.Arrange(new Rect(target.DesiredSize));
+
+            Assert.Equal(10, target.Panel.Children.Count);
+        }
+
+        [Fact]
+        public void Scroll_To_Last_Should_Work()
+        {
+            var target = CreateTarget(itemCount: 11);
+            var scroller = (TestScroller)target.Parent;
+
+            scroller.Width = scroller.Height = 100;
+            scroller.LayoutManager.ExecuteInitialLayoutPass(scroller);
+
+            var last = (target.Items as IList)[10];
+
+            target.ScrollIntoView(last);
+
+            Assert.Equal(new Vector(0, 1), ((ILogicalScrollable)target).Offset);
+            Assert.Same(target.Panel.Children[9].DataContext, last);
+        }
+
+        [Fact]
+        public void Second_Scroll_To_Last_Should_Work()
+        {
+            var target = CreateTarget(itemCount: 11);
+            var scroller = (TestScroller)target.Parent;
+
+            scroller.Width = scroller.Height = 100;
+            scroller.LayoutManager.ExecuteInitialLayoutPass(scroller);
+
+            var last = (target.Items as IList)[10];
+
+            target.ScrollIntoView(last);
+
+            Assert.Equal(new Vector(0, 1), ((ILogicalScrollable)target).Offset);
+            Assert.Same(target.Panel.Children[9].DataContext, last);
+
+            target.ScrollIntoView(last);
+
+            Assert.Equal(new Vector(0, 1), ((ILogicalScrollable)target).Offset);
+            Assert.Same(target.Panel.Children[9].DataContext, last);
+        }
+
         public class Vertical
         {
             [Fact]
             public void GetControlInDirection_Down_Should_Return_Existing_Container_If_Materialized()
             {
                 var target = CreateTarget();
+                var scroller = (TestScroller)target.Parent;
 
-                target.ApplyTemplate();
-                target.Measure(new Size(100, 100));
-                target.Arrange(new Rect(0, 0, 100, 100));
+                scroller.Width = scroller.Height = 100;
+                scroller.LayoutManager.ExecuteInitialLayoutPass(scroller);
 
                 var from = target.Panel.Children[5];
                 var result = ((ILogicalScrollable)target).GetControlInDirection(
@@ -507,10 +779,10 @@ namespace Avalonia.Controls.UnitTests.Presenters
             public void GetControlInDirection_Down_Should_Scroll_If_Necessary()
             {
                 var target = CreateTarget();
+                var scroller = (TestScroller)target.Parent;
 
-                target.ApplyTemplate();
-                target.Measure(new Size(100, 100));
-                target.Arrange(new Rect(0, 0, 100, 100));
+                scroller.Width = scroller.Height = 100;
+                scroller.LayoutManager.ExecuteInitialLayoutPass(scroller);
 
                 var from = target.Panel.Children[9];
                 var result = ((ILogicalScrollable)target).GetControlInDirection(
@@ -524,44 +796,71 @@ namespace Avalonia.Controls.UnitTests.Presenters
             [Fact]
             public void GetControlInDirection_Down_Should_Scroll_If_Partially_Visible()
             {
-                using (UnitTestApplication.Start(TestServices.RealLayoutManager))
-                {
-                    var target = CreateTarget();
-                    var scroller = (ScrollContentPresenter)target.Parent;
+                var target = CreateTarget();
+                var scroller = (TestScroller)target.Parent;
 
-                    scroller.Measure(new Size(100, 95));
-                    scroller.Arrange(new Rect(0, 0, 100, 95));
+                scroller.Width = 100;
+                scroller.Height = 95;
+                scroller.LayoutManager.ExecuteInitialLayoutPass(scroller);
 
-                    var from = target.Panel.Children[8];
-                    var result = ((ILogicalScrollable)target).GetControlInDirection(
-                        NavigationDirection.Down,
-                        from);
+                var from = target.Panel.Children[8];
+                var result = ((ILogicalScrollable)target).GetControlInDirection(
+                    NavigationDirection.Down,
+                    from);
 
-                    Assert.Equal(new Vector(0, 1), ((ILogicalScrollable)target).Offset);
-                    Assert.Same(target.Panel.Children[8], result);
-                }
+                Assert.Equal(new Vector(0, 1), ((ILogicalScrollable)target).Offset);
+                Assert.Same(target.Panel.Children[8], result);
             }
 
             [Fact]
             public void GetControlInDirection_Up_Should_Scroll_If_Partially_Visible_Item_Is_Currently_Shown()
             {
-                using (UnitTestApplication.Start(TestServices.RealLayoutManager))
-                {
-                    var target = CreateTarget();
-                    var scroller = (ScrollContentPresenter)target.Parent;
+                var target = CreateTarget();
+                var scroller = (TestScroller)target.Parent;
 
-                    scroller.Measure(new Size(100, 95));
-                    scroller.Arrange(new Rect(0, 0, 100, 95));
-                    ((ILogicalScrollable)target).Offset = new Vector(0, 11);
+                scroller.Width = 100;
+                scroller.Height = 95;
+                scroller.LayoutManager.ExecuteInitialLayoutPass(scroller);
+                ((ILogicalScrollable)target).Offset = new Vector(0, 11);
 
-                    var from = target.Panel.Children[1];
-                    var result = ((ILogicalScrollable)target).GetControlInDirection(
-                        NavigationDirection.Up,
-                        from);
+                var from = target.Panel.Children[1];
+                var result = ((ILogicalScrollable)target).GetControlInDirection(
+                    NavigationDirection.Up,
+                    from);
 
-                    Assert.Equal(new Vector(0, 10), ((ILogicalScrollable)target).Offset);
-                    Assert.Same(target.Panel.Children[0], result);
-                }
+                Assert.Equal(new Vector(0, 10), ((ILogicalScrollable)target).Offset);
+                Assert.Same(target.Panel.Children[0], result);
+            }
+
+            [Fact]
+            public void Should_Return_Horizontal_Extent_And_Viewport()
+            {
+                var target = CreateTarget();
+
+                target.ApplyTemplate();
+                target.Measure(new Size(5, 100));
+                target.Arrange(new Rect(0, 0, 5, 100));
+
+                Assert.Equal(new Size(10, 20), ((ILogicalScrollable)target).Extent);
+                Assert.Equal(new Size(5, 10), ((ILogicalScrollable)target).Viewport);
+            }
+
+            [Fact]
+            public void Horizontal_Scroll_Should_Update_Item_Position()
+            {
+                var target = CreateTarget();
+
+                target.ApplyTemplate();
+
+                target.Measure(new Size(5, 100));
+                target.Arrange(new Rect(0, 0, 5, 100));
+
+                ((ILogicalScrollable)target).Offset = new Vector(5, 0);
+
+                target.Measure(new Size(5, 100));
+                target.Arrange(new Rect(0, 0, 5, 100));
+
+                Assert.Equal(new Rect(-5, 0, 10, 10), target.Panel.Children[0].Bounds);
             }
         }
 
@@ -571,10 +870,10 @@ namespace Avalonia.Controls.UnitTests.Presenters
             public void GetControlInDirection_Right_Should_Return_Existing_Container_If_Materialized()
             {
                 var target = CreateTarget(orientation: Orientation.Horizontal);
+                var scroller = (TestScroller)target.Parent;
 
-                target.ApplyTemplate();
-                target.Measure(new Size(100, 100));
-                target.Arrange(new Rect(0, 0, 100, 100));
+                scroller.Width = scroller.Height = 100;
+                scroller.LayoutManager.ExecuteInitialLayoutPass(scroller);
 
                 var from = target.Panel.Children[5];
                 var result = ((ILogicalScrollable)target).GetControlInDirection(
@@ -588,10 +887,10 @@ namespace Avalonia.Controls.UnitTests.Presenters
             public void GetControlInDirection_Right_Should_Scroll_If_Necessary()
             {
                 var target = CreateTarget(orientation: Orientation.Horizontal);
+                var scroller = (TestScroller)target.Parent;
 
-                target.ApplyTemplate();
-                target.Measure(new Size(100, 100));
-                target.Arrange(new Rect(0, 0, 100, 100));
+                scroller.Width = scroller.Height = 100;
+                scroller.LayoutManager.ExecuteInitialLayoutPass(scroller);
 
                 var from = target.Panel.Children[9];
                 var result = ((ILogicalScrollable)target).GetControlInDirection(
@@ -605,32 +904,31 @@ namespace Avalonia.Controls.UnitTests.Presenters
             [Fact]
             public void GetControlInDirection_Right_Should_Scroll_If_Partially_Visible()
             {
-                using (UnitTestApplication.Start(TestServices.RealLayoutManager))
-                {
-                    var target = CreateTarget(orientation: Orientation.Horizontal);
-                    var scroller = (ScrollContentPresenter)target.Parent;
+                var target = CreateTarget(orientation: Orientation.Horizontal);
+                var scroller = (TestScroller)target.Parent;
 
-                    scroller.Measure(new Size(95, 100));
-                    scroller.Arrange(new Rect(0, 0, 95, 100));
+                scroller.Width = 95;
+                scroller.Height = 100;
+                scroller.LayoutManager.ExecuteInitialLayoutPass(scroller);
 
-                    var from = target.Panel.Children[8];
-                    var result = ((ILogicalScrollable)target).GetControlInDirection(
-                        NavigationDirection.Right,
-                        from);
+                var from = target.Panel.Children[8];
+                var result = ((ILogicalScrollable)target).GetControlInDirection(
+                    NavigationDirection.Right,
+                    from);
 
-                    Assert.Equal(new Vector(1, 0), ((ILogicalScrollable)target).Offset);
-                    Assert.Same(target.Panel.Children[8], result);
-                }
+                Assert.Equal(new Vector(1, 0), ((ILogicalScrollable)target).Offset);
+                Assert.Same(target.Panel.Children[8], result);
             }
 
             [Fact]
             public void GetControlInDirection_Left_Should_Scroll_If_Partially_Visible_Item_Is_Currently_Shown()
             {
                 var target = CreateTarget(orientation: Orientation.Horizontal);
+                var scroller = (TestScroller)target.Parent;
 
-                target.ApplyTemplate();
-                target.Measure(new Size(95, 100));
-                target.Arrange(new Rect(0, 0, 95, 100));
+                scroller.Width = 95;
+                scroller.Height = 100;
+                scroller.LayoutManager.ExecuteInitialLayoutPass(scroller);
                 ((ILogicalScrollable)target).Offset = new Vector(11, 0);
 
                 var from = target.Panel.Children[1];
@@ -734,6 +1032,8 @@ namespace Avalonia.Controls.UnitTests.Presenters
 
             var scroller = new TestScroller
             {
+                CanHorizontallyScroll = true,
+                CanVerticallyScroll = true,
                 Content = result = new TestItemsPresenter(useContainers)
                 {
                     Items = items,
@@ -744,7 +1044,6 @@ namespace Avalonia.Controls.UnitTests.Presenters
             };
 
             scroller.UpdateChild();
-
             return result;
         }
 
@@ -766,19 +1065,22 @@ namespace Avalonia.Controls.UnitTests.Presenters
             });
         }
 
-        private class TestScroller : ScrollContentPresenter, IRenderRoot
+        private class TestScroller : ScrollContentPresenter, IRenderRoot, ILayoutRoot
         {
-            public IRenderQueueManager RenderQueueManager { get; }
+            public IRenderer Renderer { get; }
+            public Size ClientSize { get; }
+            public double RenderScaling => 1;
 
-            public Point PointToClient(Point point)
-            {
-                throw new NotImplementedException();
-            }
+            public Size MaxClientSize => Size.Infinity;
 
-            public Point PointToScreen(Point point)
-            {
-                throw new NotImplementedException();
-            }
+            public double LayoutScaling => 1;
+
+            public ILayoutManager LayoutManager { get; } = new LayoutManager();
+
+            public IRenderTarget CreateRenderTarget() => throw new NotImplementedException();
+            public void Invalidate(Rect rect) => throw new NotImplementedException();
+            public Point PointToClient(PixelPoint p) => throw new NotImplementedException();
+            public PixelPoint PointToScreen(Point p) => throw new NotImplementedException();
         }
 
         private class TestItemsPresenter : ItemsPresenter

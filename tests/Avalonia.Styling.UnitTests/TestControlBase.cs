@@ -17,7 +17,10 @@ namespace Avalonia.Styling.UnitTests
             SubscribeCheckObservable = new TestObservable();
         }
 
+#pragma warning disable CS0067 // Event not used
         public event EventHandler<AvaloniaPropertyChangedEventArgs> PropertyChanged;
+        public event EventHandler<AvaloniaPropertyChangedEventArgs> InheritablePropertyChanged;
+#pragma warning restore CS0067
 
         public string Name { get; set; }
 
@@ -53,6 +56,11 @@ namespace Avalonia.Styling.UnitTests
         }
 
         public void SetValue<T>(AvaloniaProperty<T> property, T value, BindingPriority priority = BindingPriority.LocalValue)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool IsAnimating(AvaloniaProperty property)
         {
             throw new NotImplementedException();
         }

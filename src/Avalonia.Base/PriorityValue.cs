@@ -12,25 +12,25 @@ using Avalonia.Utilities;
 namespace Avalonia
 {
     /// <summary>
-    /// Maintains a list of prioritised bindings together with a current value.
+    /// Maintains a list of prioritized bindings together with a current value.
     /// </summary>
     /// <remarks>
     /// Bindings, in the form of <see cref="IObservable{Object}"/>s are added to the object using
     /// the <see cref="Add"/> method. With the observable is passed a priority, where lower values
-    /// represent higher priorites. The current <see cref="Value"/> is selected from the highest
+    /// represent higher priorities. The current <see cref="Value"/> is selected from the highest
     /// priority binding that doesn't return <see cref="AvaloniaProperty.UnsetValue"/>. Where there
     /// are multiple bindings registered with the same priority, the most recently added binding
     /// has a higher priority. Each time the value changes, the 
-    /// <see cref="IPriorityValueOwner.Changed(PriorityValue, object, object)"/> method on the 
+    /// <see cref="IPriorityValueOwner.Changed"/> method on the 
     /// owner object is fired with the old and new values.
     /// </remarks>
     internal class PriorityValue
     {
-        private readonly IPriorityValueOwner _owner;
         private readonly Type _valueType;
-        private readonly Dictionary<int, PriorityLevel> _levels = new Dictionary<int, PriorityLevel>();
-        private object _value;
+        private readonly SingleOrDictionary<int, PriorityLevel> _levels = new SingleOrDictionary<int, PriorityLevel>();
+
         private readonly Func<object, object> _validate;
+        private (object value, int priority) _value;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="PriorityValue"/> class.
@@ -45,13 +45,29 @@ namespace Avalonia
             Type valueType,
             Func<object, object> validate = null)
         {
-            _owner = owner;
+            Owner = owner;
             Property = property;
             _valueType = valueType;
-            _value = AvaloniaProperty.UnsetValue;
-            ValuePriority = int.MaxValue;
+            _value = (AvaloniaProperty.UnsetValue, int.MaxValue);
             _validate = validate;
         }
+
+        /// <summary>
+        /// Gets a value indicating whether the property is animating.
+        /// </summary>
+        public bool IsAnimating
+        {
+            get
+            {
+                return ValuePriority <= (int)BindingPriority.Animation && 
+                    GetLevel(ValuePriority).ActiveBindingIndex != -1;
+            }
+        }
+
+        /// <summary>
+        /// Gets the owner of the value.
+        /// </summary>
+        public IPriorityValueOwner Owner { get; }
 
         /// <summary>
         /// Gets the property that the value represents.
@@ -61,23 +77,18 @@ namespace Avalonia
         /// <summary>
         /// Gets the current value.
         /// </summary>
-        public object Value => _value;
+        public object Value => _value.value;
 
         /// <summary>
         /// Gets the priority of the binding that is currently active.
         /// </summary>
-        public int ValuePriority
-        {
-            get;
-            private set;
-        }
+        public int ValuePriority => _value.priority;
 
         /// <summary>
         /// Adds a new binding.
         /// </summary>
         /// <param name="binding">The binding.</param>
         /// <param name="priority">The binding priority.</param>
-        /// <param name="validation">Validation settings for the binding.</param>
         /// <returns>
         /// A disposable that will remove the binding.
         /// </returns>
@@ -180,30 +191,13 @@ namespace Avalonia
         }
 
         /// <summary>
-        /// Called whenever a priority level validation state changes.
-        /// </summary>
-        /// <param name="priorityLevel">The priority level of the changed entry.</param>
-        /// <param name="validationStatus">The validation status.</param>
-        public void LevelValidation(PriorityLevel priorityLevel, IValidationStatus validationStatus)
-        {
-            _owner.DataValidationChanged(this, validationStatus);
-        }
-
-        /// <summary>
         /// Called when a priority level encounters an error.
         /// </summary>
         /// <param name="level">The priority level of the changed entry.</param>
         /// <param name="error">The binding error.</param>
-        public void LevelError(PriorityLevel level, BindingError error)
+        public void LevelError(PriorityLevel level, BindingNotification error)
         {
-            Logger.Log(
-                LogEventLevel.Error,
-                LogArea.Binding,
-                _owner,
-                "Error binding to {Target}.{Property}: {Message}",
-                _owner,
-                Property,
-                error.Exception.Message);
+            Owner.LogError(Property, error.Error);
         }
 
         /// <summary>
@@ -242,38 +236,76 @@ namespace Avalonia
         }
 
         /// <summary>
-        /// Updates the current <see cref="Value"/> and notifies all subscibers.
+        /// Updates the current <see cref="Value"/> and notifies all subscribers.
         /// </summary>
         /// <param name="value">The value to set.</param>
         /// <param name="priority">The priority level that the value came from.</param>
         private void UpdateValue(object value, int priority)
         {
+            Owner.Setter.SetAndNotify(Property,
+                ref _value,
+                UpdateCore,
+                (value, priority));
+        }
+
+        private bool UpdateCore(
+            object update,
+            ref (object value, int priority) backing,
+            Action<Action> notify)
+            => UpdateCore(((object, int))update, ref backing, notify);
+
+        private bool UpdateCore(
+            (object value, int priority) update,
+            ref (object value, int priority) backing,
+            Action<Action> notify)
+        {
+            var val = update.value;
+            var notification = val as BindingNotification;
             object castValue;
 
-            if (TypeUtilities.TryCast(_valueType, value, out castValue))
+            if (notification != null)
             {
-                var old = _value;
+                val = (notification.HasValue) ? notification.Value : null;
+            }
+
+            if (TypeUtilities.TryConvertImplicit(_valueType, val, out castValue))
+            {
+                var old = backing.value;
 
                 if (_validate != null && castValue != AvaloniaProperty.UnsetValue)
                 {
                     castValue = _validate(castValue);
                 }
 
-                ValuePriority = priority;
-                _value = castValue;
-                _owner?.Changed(this, old, _value);
+                backing = (castValue, update.priority);
+
+                if (notification?.HasValue == true)
+                {
+                    notification.SetValue(castValue);
+                }
+
+                if (notification == null || notification.HasValue)
+                {
+                    notify(() => Owner?.Changed(Property, ValuePriority, old, Value));
+                }
+
+                if (notification != null)
+                {
+                    Owner?.BindingNotificationReceived(Property, notification);
+                }
             }
             else
             {
                 Logger.Error(
-                    LogArea.Binding, 
-                    _owner,
+                    LogArea.Binding,
+                    Owner,
                     "Binding produced invalid value for {$Property} ({$PropertyType}): {$Value} ({$ValueType})",
-                    Property.Name, 
-                    _valueType, 
-                    value,
-                    value.GetType());
+                    Property.Name,
+                    _valueType,
+                    val,
+                    val?.GetType());
             }
+            return true;
         }
     }
 }

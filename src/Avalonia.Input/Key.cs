@@ -1,7 +1,10 @@
 // Copyright (c) The Avalonia Project. All rights reserved.
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
-
+#if AVALONIA_REMOTE_PROTOCOL
+namespace Avalonia.Remote.Protocol.Input
+#else
 namespace Avalonia.Input
+#endif
 {
     /// <summary>
     /// Defines the keys available on a keyboard.
@@ -74,7 +77,7 @@ namespace Avalonia.Input
         KanaMode = 9,
 
         /// <summary>
-        /// The IME Janja mode key.
+        /// The IME Junja mode key.
         /// </summary>
         JunjaMode = 10,
 
@@ -1017,5 +1020,23 @@ namespace Avalonia.Input
         /// The key is used with another key to create a single combined character.
         /// </summary>
         DeadCharProcessed = 172,
+        
+        
+        /// <summary>
+        /// OSX Platform-specific Fn+Left key
+        /// </summary>
+        FnLeftArrow = 10001,
+        /// <summary>
+        /// OSX Platform-specific Fn+Right key
+        /// </summary>
+        FnRightArrow = 10002,
+        /// <summary>
+        /// OSX Platform-specific Fn+Up key
+        /// </summary>
+        FnUpArrow = 10003,
+        /// <summary>
+        /// OSX Platform-specific Fn+Down key
+        /// </summary>
+        FnDownArrow = 10004,
     }
 }

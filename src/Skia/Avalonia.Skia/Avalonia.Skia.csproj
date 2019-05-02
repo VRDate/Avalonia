@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>Avalonia.Skia</RootNamespace>
+    <AssemblyName>Avalonia.Skia</AssemblyName>
+    <IncludeLinuxSkia>true</IncludeLinuxSkia>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\packages\Avalonia\Avalonia.csproj" />
+  </ItemGroup>
+  
+  <Import Project="..\..\..\build\SkiaSharp.props" />
+  <Import Project="..\..\Shared\RenderHelpers\RenderHelpers.projitems" Label="Shared" />
+</Project>

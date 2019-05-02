@@ -20,11 +20,11 @@ namespace Avalonia.UnitTests
             return _windowImpl?.Invoke() ?? Mock.Of<IWindowImpl>(x => x.Scaling == 1);
         }
 
-        public IWindowImpl CreateEmbeddableWindow()
+        public IEmbeddableWindowImpl CreateEmbeddableWindow()
         {
             throw new NotImplementedException();
         }
 
-        public IPopupImpl CreatePopup() => _popupImpl?.Invoke() ?? Mock.Of<IPopupImpl>();
+        public IPopupImpl CreatePopup() => _popupImpl?.Invoke() ?? Mock.Of<IPopupImpl>(x => x.Scaling == 1);
     }
 }

@@ -1,11 +1,6 @@
 // Copyright (c) The Avalonia Project. All rights reserved.
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Threading;
 
 namespace Avalonia.Threading
@@ -36,7 +31,7 @@ namespace Avalonia.Threading
         /// <inheritdoc/>
         public override void Post(SendOrPostCallback d, object state)
         {
-           Dispatcher.UIThread.InvokeAsync(() => d(state));
+           Dispatcher.UIThread.Post(() => d(state), DispatcherPriority.Send);
         }
 
         /// <inheritdoc/>
@@ -45,7 +40,7 @@ namespace Avalonia.Threading
             if (Dispatcher.UIThread.CheckAccess())
                 d(state);
             else
-                Dispatcher.UIThread.InvokeTaskAsync(() => d(state)).Wait();
+                Dispatcher.UIThread.InvokeAsync(() => d(state), DispatcherPriority.Send).Wait();
         }
     }
 }

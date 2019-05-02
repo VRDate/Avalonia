@@ -1,14 +1,12 @@
-using Android.Graphics;
+using System;
 using Android.Views;
 using Avalonia.Input;
 using Avalonia.Input.Raw;
-using Avalonia.Media;
 using Avalonia.Platform;
-using System;
 
 namespace Avalonia.Android.Platform.Specific.Helpers
 {
-    public class AndroidTouchEventsHelper<TView> : IDisposable where TView : View, IWindowImpl, IAndroidView
+    public class AndroidTouchEventsHelper<TView> : IDisposable where TView : ITopLevelImpl, IAndroidView
     {
         private TView _view;
         public bool HandleEvents { get; set; }
@@ -63,15 +61,15 @@ namespace Avalonia.Android.Platform.Specific.Helpers
                 //if point is in view otherwise it's possible avalonia not to find the proper window to dispatch the event
                 _point = _getPointFunc(e);
 
-                double x = _view.GetX();
-                double y = _view.GetY();
-                double r = x + _view.Width;
-                double b = y + _view.Height;
+                double x = _view.View.GetX();
+                double y = _view.View.GetY();
+                double r = x + _view.View.Width;
+                double b = y + _view.View.Height;
 
                 if (x <= _point.X && r >= _point.X && y <= _point.Y && b >= _point.Y)
                 {
                     var inputRoot = _getInputRoot();
-                    var mouseDevice = MouseDevice.Instance;
+                    var mouseDevice = Avalonia.Android.Platform.Input.AndroidMouseDevice.Instance;
 
                     //in order the controls to work in a predictable way
                     //we need to generate mouse move before first mouse down event
@@ -125,8 +123,6 @@ namespace Avalonia.Android.Platform.Specific.Helpers
             //if return false events for move and up are not received!!!
             return e.Action != MotionEventActions.Up;
         }
-
-        private Paint _paint;
 
         public void Dispose()
         {

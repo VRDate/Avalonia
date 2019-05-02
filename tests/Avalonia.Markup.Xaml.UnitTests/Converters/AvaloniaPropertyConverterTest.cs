@@ -2,17 +2,15 @@
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
 using System;
-using System.Reactive;
 using Moq;
-using OmniXaml;
-using OmniXaml.ObjectAssembler.Commands;
-using OmniXaml.TypeConversion;
-using OmniXaml.Typing;
 using Avalonia.Collections;
-using Avalonia.Controls;
 using Avalonia.Markup.Xaml.Converters;
 using Avalonia.Styling;
 using Xunit;
+using System.ComponentModel;
+using Portable.Xaml;
+using Portable.Xaml.Markup;
+using Avalonia.Controls;
 
 namespace Avalonia.Markup.Xaml.UnitTests.Converters
 {
@@ -29,7 +27,8 @@ namespace Avalonia.Markup.Xaml.UnitTests.Converters
         public void ConvertFrom_Finds_Fully_Qualified_Property()
         {
             var target = new AvaloniaPropertyTypeConverter();
-            var context = CreateContext();
+            var style = new Style(x => x.OfType<Class1>());
+            var context = CreateContext(style);
             var result = target.ConvertFrom(context, null, "Class1.Foo");
 
             Assert.Equal(Class1.FooProperty, result);
@@ -50,26 +49,75 @@ namespace Avalonia.Markup.Xaml.UnitTests.Converters
         public void ConvertFrom_Finds_Attached_Property()
         {
             var target = new AvaloniaPropertyTypeConverter();
-            var context = CreateContext();
+            var style = new Style(x => x.OfType<Class1>());
+            var context = CreateContext(style);
             var result = target.ConvertFrom(context, null, "AttachedOwner.Attached");
 
             Assert.Equal(AttachedOwner.AttachedProperty, result);
         }
 
-        private IValueContext CreateContext(Style style = null)
+        [Fact]
+        public void ConvertFrom_Finds_Attached_Property_With_Parentheses()
         {
-            var context = new Mock<IValueContext>();
-            var topDownValueContext = new Mock<ITopDownValueContext>();
-            var typeRepository = new Mock<ITypeRepository>();
-            var featureProvider = new Mock<ITypeFeatureProvider>();
-            var class1XamlType = new XamlType(typeof(Class1), typeRepository.Object, null, featureProvider.Object);
-            var attachedOwnerXamlType = new XamlType(typeof(AttachedOwner), typeRepository.Object, null, featureProvider.Object);
-            context.Setup(x => x.TopDownValueContext).Returns(topDownValueContext.Object);
-            context.Setup(x => x.TypeRepository).Returns(typeRepository.Object);
-            topDownValueContext.Setup(x => x.GetLastInstance(It.IsAny<XamlType>())).Returns(style);
-            typeRepository.Setup(x => x.GetByQualifiedName("Class1")).Returns(class1XamlType);
-            typeRepository.Setup(x => x.GetByQualifiedName("AttachedOwner")).Returns(attachedOwnerXamlType);
-            return context.Object;
+            var target = new AvaloniaPropertyTypeConverter();
+            var style = new Style(x => x.OfType<Class1>());
+            var context = CreateContext(style);
+            var result = target.ConvertFrom(context, null, "(AttachedOwner.Attached)");
+
+            Assert.Equal(AttachedOwner.AttachedProperty, result);
+        }
+
+        [Fact]
+        public void ConvertFrom_Throws_For_Nonexistent_Property()
+        {
+            var target = new AvaloniaPropertyTypeConverter();
+            var style = new Style(x => x.OfType<Class1>());
+            var context = CreateContext(style);
+
+            var ex = Assert.Throws<XamlLoadException>(() => target.ConvertFrom(context, null, "Nonexistent"));
+
+            Assert.Equal("Could not find property 'Class1.Nonexistent'.", ex.Message);
+        }
+
+        [Fact]
+        public void ConvertFrom_Throws_For_Nonexistent_Attached_Property()
+        {
+            var target = new AvaloniaPropertyTypeConverter();
+            var style = new Style(x => x.OfType<Class1>());
+            var context = CreateContext(style);
+
+            var ex = Assert.Throws<XamlLoadException>(() => target.ConvertFrom(context, null, "AttachedOwner.NonExistent"));
+
+            Assert.Equal("Could not find property 'AttachedOwner.NonExistent'.", ex.Message);
+        }
+
+        private ITypeDescriptorContext CreateContext(Style style = null)
+        {
+            var tdMock = new Mock<ITypeDescriptorContext>();
+            var xsc = new Mock<IXamlSchemaContextProvider>();
+            var sc = Mock.Of<XamlSchemaContext>();
+            var amb = new Mock<IAmbientProvider>();
+            var tr = new Mock<IXamlTypeResolver>();
+
+            tdMock.Setup(d => d.GetService(typeof(IAmbientProvider)))
+                .Returns(amb.Object);
+            tdMock.Setup(d => d.GetService(typeof(IXamlSchemaContextProvider)))
+                .Returns(xsc.Object);
+            tdMock.Setup(d => d.GetService(typeof(IXamlTypeResolver)))
+                .Returns(tr.Object);
+
+            xsc.SetupGet(v => v.SchemaContext)
+                .Returns(sc);
+            amb.Setup(v => v.GetFirstAmbientValue(It.IsAny<Portable.Xaml.XamlType>()))
+                .Returns(style);
+            amb.Setup(v => v.GetAllAmbientValues(It.IsAny<Portable.Xaml.XamlType>()))
+                .Returns(new object[] { style });
+            tr.Setup(v => v.Resolve(nameof(Class1)))
+                .Returns(typeof(Class1));
+            tr.Setup(v => v.Resolve(nameof(AttachedOwner)))
+                .Returns(typeof(AttachedOwner));
+
+            return tdMock.Object;
         }
 
         private class Class1 : AvaloniaObject, IStyleable

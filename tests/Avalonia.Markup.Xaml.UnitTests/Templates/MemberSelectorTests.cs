@@ -10,32 +10,6 @@ namespace Avalonia.Markup.Xaml.UnitTests.Templates
     public class MemberSelectorTests
     {
         [Fact]
-        public void Should_Not_Hold_Reference_To_Object()
-        {
-            WeakReference dataRef = null;
-
-            var selector = new MemberSelector() { MemberName = "Child.StringValue" };
-
-            Action run = () =>
-            {
-                var data = new Item()
-                {
-                    Child = new Item() { StringValue = "Value1" }
-                };
-
-                Assert.Same("Value1", selector.Select(data));
-
-                dataRef = new WeakReference(data);
-            };
-
-            run();
-
-            GC.Collect();
-
-            Assert.False(dataRef.IsAlive);
-        }
-
-        [Fact]
         public void Should_Select_Child_Property_Value()
         {
             var selector = new MemberSelector() { MemberName = "Child.StringValue" };
@@ -89,7 +63,7 @@ namespace Avalonia.Markup.Xaml.UnitTests.Templates
         {
             var selector = new MemberSelector() { MemberName = "StringValue" };
 
-            Assert.Equal(null, selector.Select(null));
+            Assert.Null(selector.Select(null));
         }
 
         [Fact]
@@ -99,7 +73,7 @@ namespace Avalonia.Markup.Xaml.UnitTests.Templates
 
             var data = new Item() { StringValue = "Value1" };
 
-            Assert.Same(null, selector.Select(data));
+            Assert.Null(selector.Select(data));
         }
 
         [Fact]

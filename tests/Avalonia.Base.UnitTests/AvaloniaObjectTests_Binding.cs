@@ -2,14 +2,21 @@
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
 using System;
-using System.Collections;
-using System.Collections.Generic;
+using System.ComponentModel;
+using System.Reactive.Concurrency;
 using System.Reactive.Linq;
 using System.Reactive.Subjects;
-using Microsoft.Reactive.Testing;
+using System.Threading;
+using System.Threading.Tasks;
 using Avalonia.Data;
 using Avalonia.Logging;
+using Avalonia.Markup.Data;
+using Avalonia.Platform;
+using Avalonia.Threading;
 using Avalonia.UnitTests;
+using Avalonia.Diagnostics;
+using Microsoft.Reactive.Testing;
+using Moq;
 using Xunit;
 
 namespace Avalonia.Base.UnitTests
@@ -55,14 +62,43 @@ namespace Avalonia.Base.UnitTests
         }
 
         [Fact]
-        public void Bind_Throws_Exception_For_Unregistered_Property()
+        public void OneTime_Binding_Ignores_UnsetValue()
+        {
+            var target = new Class1();
+            var source = new Subject<object>();
+
+            target.Bind(Class1.QuxProperty, new TestOneTimeBinding(source));
+
+            source.OnNext(AvaloniaProperty.UnsetValue);
+            Assert.Equal(5.6, target.GetValue(Class1.QuxProperty));
+
+            source.OnNext(6.7);
+            Assert.Equal(6.7, target.GetValue(Class1.QuxProperty));
+        }
+
+        [Fact]
+        public void OneTime_Binding_Ignores_Binding_Errors()
+        {
+            var target = new Class1();
+            var source = new Subject<object>();
+
+            target.Bind(Class1.QuxProperty, new TestOneTimeBinding(source));
+
+            source.OnNext(new BindingNotification(new Exception(), BindingErrorType.Error));
+            Assert.Equal(5.6, target.GetValue(Class1.QuxProperty));
+
+            source.OnNext(6.7);
+            Assert.Equal(6.7, target.GetValue(Class1.QuxProperty));
+        }
+
+        [Fact]
+        public void Bind_Does_Not_Throw_Exception_For_Unregistered_Property()
         {
             Class1 target = new Class1();
 
-            Assert.Throws<ArgumentException>(() =>
-            {
-                target.Bind(Class2.BarProperty, Observable.Return("foo"));
-            });
+            target.Bind(Class2.BarProperty, Observable.Never<string>().StartWith("foo"));
+
+            Assert.Equal("foo", target.GetValue(Class2.BarProperty));
         }
 
         [Fact]
@@ -227,14 +263,14 @@ namespace Avalonia.Base.UnitTests
         public void this_Operator_Binds_One_Way()
         {
             Class1 target1 = new Class1();
-            Class1 target2 = new Class1();
-            IndexerDescriptor binding = Class1.FooProperty.Bind().WithMode(BindingMode.OneWay);
+            Class2 target2 = new Class2();
+            IndexerDescriptor binding = Class2.BarProperty.Bind().WithMode(BindingMode.OneWay);
 
             target1.SetValue(Class1.FooProperty, "first");
             target2[binding] = target1[!Class1.FooProperty];
             target1.SetValue(Class1.FooProperty, "second");
 
-            Assert.Equal("second", target2.GetValue(Class1.FooProperty));
+            Assert.Equal("second", target2.GetValue(Class2.BarProperty));
         }
 
         [Fact]
@@ -242,10 +278,9 @@ namespace Avalonia.Base.UnitTests
         {
             Class1 target1 = new Class1();
             Class1 target2 = new Class1();
-            IndexerDescriptor binding = Class1.FooProperty.Bind().WithMode(BindingMode.TwoWay);
 
             target1.SetValue(Class1.FooProperty, "first");
-            target2[binding] = target1[!Class1.FooProperty];
+            target2[!Class1.FooProperty] = target1[!!Class1.FooProperty];
             Assert.Equal("first", target2.GetValue(Class1.FooProperty));
             target1.SetValue(Class1.FooProperty, "second");
             Assert.Equal("second", target2.GetValue(Class1.FooProperty));
@@ -258,10 +293,9 @@ namespace Avalonia.Base.UnitTests
         {
             Class1 target1 = new Class1();
             Class1 target2 = new Class1();
-            IndexerDescriptor binding = Class1.FooProperty.Bind().WithMode(BindingMode.OneTime);
 
             target1.SetValue(Class1.FooProperty, "first");
-            target2[binding] = target1[!Class1.FooProperty];
+            target2[!Class1.FooProperty] = target1[Class1.FooProperty.Bind().WithMode(BindingMode.OneTime)];
             target1.SetValue(Class1.FooProperty, "second");
 
             Assert.Equal("first", target2.GetValue(Class1.FooProperty));
@@ -275,35 +309,40 @@ namespace Avalonia.Base.UnitTests
 
             target.Bind(Class1.QuxProperty, source);
             source.OnNext(6.7);
-            source.OnNext(new BindingError(new InvalidOperationException("Foo")));
+            source.OnNext(new BindingNotification(
+                new InvalidOperationException("Foo"),
+                BindingErrorType.Error));
 
-            Assert.Equal(6.7, target.GetValue(Class1.QuxProperty));
+            Assert.Equal(5.6, target.GetValue(Class1.QuxProperty));
         }
 
         [Fact]
-        public void BindingError_With_FallbackValue_Causes_Target_Update()
+        public void BindingNotification_With_FallbackValue_Causes_Target_Update()
         {
             var target = new Class1();
             var source = new Subject<object>();
 
             target.Bind(Class1.QuxProperty, source);
             source.OnNext(6.7);
-            source.OnNext(new BindingError(new InvalidOperationException("Foo"), 8.9));
+            source.OnNext(new BindingNotification(
+                new InvalidOperationException("Foo"),
+                BindingErrorType.Error,
+                8.9));
 
             Assert.Equal(8.9, target.GetValue(Class1.QuxProperty));
         }
 
         [Fact]
-        public void Bind_Logs_BindingError()
+        public void Bind_Logs_Binding_Error()
         {
             var target = new Class1();
             var source = new Subject<object>();
             var called = false;
-            var expectedMessageTemplate = "Error binding to {Target}.{Property}: {Message}";
+            var expectedMessageTemplate = "Error in binding to {Target}.{Property}: {Message}";
 
             LogCallback checkLogMessage = (level, area, src, mt, pv) =>
             {
-                if (level == LogEventLevel.Error &&
+                if (level == LogEventLevel.Warning &&
                     area == LogArea.Binding &&
                     mt == expectedMessageTemplate)
                 {
@@ -315,11 +354,141 @@ namespace Avalonia.Base.UnitTests
             {
                 target.Bind(Class1.QuxProperty, source);
                 source.OnNext(6.7);
-                source.OnNext(new BindingError(new InvalidOperationException("Foo")));
+                source.OnNext(new BindingNotification(
+                    new InvalidOperationException("Foo"),
+                    BindingErrorType.Error));
 
-                Assert.Equal(6.7, target.GetValue(Class1.QuxProperty));
+                Assert.Equal(5.6, target.GetValue(Class1.QuxProperty));
                 Assert.True(called);
             }
+        }
+
+        [Fact]
+        public async Task Bind_With_Scheduler_Executes_On_Scheduler()
+        {
+            var target = new Class1();
+            var source = new Subject<object>();
+            var currentThreadId = Thread.CurrentThread.ManagedThreadId;
+
+            var threadingInterfaceMock = new Mock<IPlatformThreadingInterface>();
+            threadingInterfaceMock.SetupGet(mock => mock.CurrentThreadIsLoopThread)
+                .Returns(() => Thread.CurrentThread.ManagedThreadId == currentThreadId);
+
+            var services = new TestServices(
+                scheduler: AvaloniaScheduler.Instance,
+                threadingInterface: threadingInterfaceMock.Object);
+
+            using (UnitTestApplication.Start(services))
+            {
+                target.Bind(Class1.QuxProperty, source);
+
+                await Task.Run(() => source.OnNext(6.7));
+            }
+        }
+
+        [Fact]
+        public void SetValue_Should_Not_Cause_StackOverflow_And_Have_Correct_Values()
+        {
+            var viewModel = new TestStackOverflowViewModel()
+            {
+                Value = 50
+            };
+
+            var target = new Class1();
+
+            target.Bind(Class1.DoubleValueProperty,
+                new Binding("Value") { Mode = BindingMode.TwoWay, Source = viewModel });
+
+            var child = new Class1();
+
+            child[!!Class1.DoubleValueProperty] = target[!!Class1.DoubleValueProperty];
+
+            Assert.Equal(1, viewModel.SetterInvokedCount);
+
+            // Issues #855 and #824 were causing a StackOverflowException at this point.
+            target.DoubleValue = 51.001;
+
+            Assert.Equal(2, viewModel.SetterInvokedCount);
+
+            double expected = 51;
+
+            Assert.Equal(expected, viewModel.Value);
+            Assert.Equal(expected, target.DoubleValue);
+            Assert.Equal(expected, child.DoubleValue);
+        }
+
+        [Fact]
+        public void IsAnimating_On_Property_With_No_Value_Returns_False()
+        {
+            var target = new Class1();
+
+            Assert.False(target.IsAnimating(Class1.FooProperty));
+        }
+
+        [Fact]
+        public void IsAnimating_On_Property_With_Animation_Value_Returns_False()
+        {
+            var target = new Class1();
+
+            target.SetValue(Class1.FooProperty, "foo", BindingPriority.Animation);
+
+            Assert.False(target.IsAnimating(Class1.FooProperty));
+        }
+
+        [Fact]
+        public void IsAnimating_On_Property_With_Non_Animation_Binding_Returns_False()
+        {
+            var target = new Class1();
+            var source = new Subject<string>();
+
+            target.Bind(Class1.FooProperty, source, BindingPriority.LocalValue);
+
+            Assert.False(target.IsAnimating(Class1.FooProperty));
+        }
+
+        [Fact]
+        public void IsAnimating_On_Property_With_Animation_Binding_Returns_True()
+        {
+            var target = new Class1();
+            var source = new BehaviorSubject<string>("foo");
+
+            target.Bind(Class1.FooProperty, source, BindingPriority.Animation);
+
+            Assert.True(target.IsAnimating(Class1.FooProperty));
+        }
+
+        [Fact]
+        public void TwoWay_Binding_Should_Not_Call_Setter_On_Creation()
+        {
+            var target = new Class1();
+            var source = new TestTwoWayBindingViewModel();
+
+            target.Bind(Class1.DoubleValueProperty, new Binding(nameof(source.Value), BindingMode.TwoWay) { Source = source });
+
+            Assert.False(source.SetterCalled);
+        }
+
+        [Fact]
+        public void TwoWay_Binding_Should_Not_Call_Setter_On_Creation_Indexer()
+        {
+            var target = new Class1();
+            var source = new TestTwoWayBindingViewModel();
+
+            target.Bind(Class1.DoubleValueProperty, new Binding("[0]", BindingMode.TwoWay) { Source = source });
+
+            Assert.False(source.SetterCalled);
+        }
+
+        [Fact]
+        public void Disposing_Completed_Binding_Does_Not_Throw()
+        {
+            var target = new Class1();
+            var source = new Subject<string>();
+            var subscription = target.Bind(Class1.FooProperty, source);
+
+            source.OnCompleted();
+
+            subscription.Dispose();
         }
 
         /// <summary>
@@ -340,12 +509,102 @@ namespace Avalonia.Base.UnitTests
 
             public static readonly StyledProperty<double> QuxProperty =
                 AvaloniaProperty.Register<Class1, double>("Qux", 5.6);
+
+            public static readonly StyledProperty<double> DoubleValueProperty =
+                        AvaloniaProperty.Register<Class1, double>(nameof(DoubleValue));
+
+            public double DoubleValue
+            {
+                get { return GetValue(DoubleValueProperty); }
+                set { SetValue(DoubleValueProperty, value); }
+            }
         }
 
         private class Class2 : Class1
         {
             public static readonly StyledProperty<string> BarProperty =
                 AvaloniaProperty.Register<Class2, string>("Bar", "bardefault");
+        }
+
+        private class TestOneTimeBinding : IBinding
+        {
+            private IObservable<object> _source;
+
+            public TestOneTimeBinding(IObservable<object> source)
+            {
+                _source = source;
+            }
+
+            public InstancedBinding Initiate(
+                IAvaloniaObject target,
+                AvaloniaProperty targetProperty,
+                object anchor = null,
+                bool enableDataValidation = false)
+            {
+                return InstancedBinding.OneTime(_source);
+            }
+        }
+
+        private class TestStackOverflowViewModel : INotifyPropertyChanged
+        {
+            public int SetterInvokedCount { get; private set; }
+
+            public const int MaxInvokedCount = 1000;
+
+            private double _value;
+
+            public event PropertyChangedEventHandler PropertyChanged;
+
+            public double Value
+            {
+                get { return _value; }
+                set
+                {
+                    if (_value != value)
+                    {
+                        SetterInvokedCount++;
+                        if (SetterInvokedCount < MaxInvokedCount)
+                        {
+                            _value = (int)value;
+                            if (_value > 75) _value = 75;
+                            if (_value < 25) _value = 25;
+                        }
+                        else
+                        {
+                            _value = value;
+                        }
+
+                        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(Value)));
+                    }
+                }
+            }
+        }
+
+        private class TestTwoWayBindingViewModel
+        {
+            private double _value;
+
+            public double Value
+            {
+                get => _value;
+                set
+                {
+                    _value = value;
+                    SetterCalled = true;
+                }
+            }
+
+            public double this[int index]
+            {
+                get => _value;
+                set
+                {
+                    _value = value;
+                    SetterCalled = true;
+                }
+            }
+
+            public bool SetterCalled { get; private set; }
         }
     }
 }

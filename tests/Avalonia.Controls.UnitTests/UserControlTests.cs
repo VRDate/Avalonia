@@ -21,9 +21,9 @@ namespace Avalonia.Controls.UnitTests
                 var target = new UserControl();
                 var root = new TestRoot
                 {
-                    Styles = new Styles
+                    Styles =
                     {
-                        new Style(x => x.OfType<ContentControl>())
+                        new Style(x => x.OfType<UserControl>())
                         {
                             Setters = new[]
                             {
@@ -40,7 +40,7 @@ namespace Avalonia.Controls.UnitTests
 
         private FuncControlTemplate GetTemplate()
         {
-            return new FuncControlTemplate<ContentControl>(parent =>
+            return new FuncControlTemplate<UserControl>(parent =>
             {
                 return new Border
                 {

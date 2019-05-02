@@ -1,11 +1,13 @@
 // Copyright (c) The Avalonia Project. All rights reserved.
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
+using System;
+using Avalonia.Logging;
 using Avalonia.Media;
 using Avalonia.Platform;
 using SharpDX.Direct2D1;
-using SweepDirection = SharpDX.Direct2D1.SweepDirection;
 using D2D = SharpDX.Direct2D1;
+using SweepDirection = SharpDX.Direct2D1.SweepDirection;
 
 namespace Avalonia.Direct2D1.Media
 {
@@ -76,7 +78,20 @@ namespace Avalonia.Direct2D1.Media
 
         public void Dispose()
         {
-            _sink.Close();
+            // Put a catch around sink.Close as it may throw if there were an error e.g. parsing a path.
+            try
+            {
+                _sink.Close();
+            }
+            catch (Exception ex)
+            {
+                Logger.Error(
+                    LogArea.Visual,
+                    this,
+                    "GeometrySink.Close exception: {Exception}",
+                    ex);
+            }
+
             _sink.Dispose();
         }
     }

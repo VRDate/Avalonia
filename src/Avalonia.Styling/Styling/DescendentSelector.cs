@@ -7,20 +7,23 @@ using Avalonia.LogicalTree;
 
 namespace Avalonia.Styling
 {
-    internal class DescendentSelector : Selector
+    internal class DescendantSelector : Selector
     {
         private readonly Selector _parent;
         private string _selectorString;
 
-        public DescendentSelector(Selector parent)
+        public DescendantSelector(Selector parent)
         {
             if (parent == null)
             {
-                throw new InvalidOperationException("Descendent selector must be preceeded by a selector.");
+                throw new InvalidOperationException("Descendant selector must be preceeded by a selector.");
             }
 
             _parent = parent;
         }
+
+        /// <inheritdoc/>
+        public override bool IsCombinator => true;
 
         /// <inheritdoc/>
         public override bool InTemplate => _parent.InTemplate;
@@ -41,7 +44,7 @@ namespace Avalonia.Styling
         protected override SelectorMatch Evaluate(IStyleable control, bool subscribe)
         {
             ILogical c = (ILogical)control;
-            List<IObservable<bool>> descendentMatches = new List<IObservable<bool>>();
+            List<IObservable<bool>> descendantMatches = new List<IObservable<bool>>();
 
             while (c != null)
             {
@@ -51,27 +54,24 @@ namespace Avalonia.Styling
                 {
                     var match = _parent.Match((IStyleable)c, subscribe);
 
-                    if (match.ImmediateResult != null)
+                    if (match.Result == SelectorMatchResult.Sometimes)
                     {
-                        if (match.ImmediateResult == true)
-                        {
-                            return SelectorMatch.True;
-                        }
+                        descendantMatches.Add(match.Activator);
                     }
-                    else
+                    else if (match.IsMatch)
                     {
-                        descendentMatches.Add(match.ObservableResult);
+                        return SelectorMatch.AlwaysThisInstance;
                     }
                 }
             }
 
-            if (descendentMatches.Count > 0)
+            if (descendantMatches.Count > 0)
             {
-                return new SelectorMatch(StyleActivator.Or(descendentMatches));
+                return new SelectorMatch(StyleActivator.Or(descendantMatches));
             }
             else
             {
-                return SelectorMatch.False;
+                return SelectorMatch.NeverThisInstance;
             }
         }
 

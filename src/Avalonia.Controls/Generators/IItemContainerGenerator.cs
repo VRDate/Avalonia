@@ -23,7 +23,12 @@ namespace Avalonia.Controls.Generators
         IDataTemplate ItemTemplate { get; set; }
 
         /// <summary>
-        /// Signalled whenever new containers are materialized.
+        /// Gets the ContainerType, or null if its an untyped ContainerGenerator.
+        /// </summary>
+        Type ContainerType { get; }
+
+        /// <summary>
+        /// Signaled whenever new containers are materialized.
         /// </summary>
         event EventHandler<ItemContainerEventArgs> Materialized;
 

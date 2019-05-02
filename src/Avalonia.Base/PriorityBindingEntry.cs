@@ -3,6 +3,7 @@
 
 using System;
 using Avalonia.Data;
+using Avalonia.Threading;
 
 namespace Avalonia
 {
@@ -21,7 +22,6 @@ namespace Avalonia
         /// <param name="index">
         /// The binding index. Later bindings should have higher indexes.
         /// </param>
-        /// <param name="validation">The validation settings for the binding.</param>
         public PriorityBindingEntry(PriorityLevel owner, int index)
         {
             _owner = owner;
@@ -49,6 +49,11 @@ namespace Avalonia
         {
             get;
         }
+
+        /// <summary>
+        /// Gets a value indicating whether the binding has completed.
+        /// </summary>
+        public bool HasCompleted { get; private set; }
 
         /// <summary>
         /// The current value of the binding.
@@ -93,29 +98,52 @@ namespace Avalonia
 
         private void ValueChanged(object value)
         {
-            var bindingError = value as BindingError;
-
-            if (bindingError != null)
+            void Signal()
             {
-                _owner.Error(this, bindingError);
+                var notification = value as BindingNotification;
+
+                if (notification != null)
+                {
+                    if (notification.HasValue || notification.ErrorType == BindingErrorType.Error)
+                    {
+                        Value = notification.Value;
+                        _owner.Changed(this);
+                    }
+
+                    if (notification.ErrorType != BindingErrorType.None)
+                    {
+                        _owner.Error(this, notification);
+                    }
+                }
+                else
+                {
+                    Value = value;
+                    _owner.Changed(this);
+                }
             }
 
-            var validationStatus = value as IValidationStatus;
-
-            if (validationStatus != null)
+            if (Dispatcher.UIThread.CheckAccess())
             {
-                _owner.Validation(this, validationStatus);
+                Signal();
             }
-            else if (bindingError == null || bindingError.UseFallbackValue)
+            else
             {
-                Value = bindingError == null ? value : bindingError.FallbackValue;
-                _owner.Changed(this);
+                Dispatcher.UIThread.Post(Signal);
             }
         }
 
         private void Completed()
         {
-            _owner.Completed(this);
+            HasCompleted = true;
+
+            if (Dispatcher.UIThread.CheckAccess())
+            {
+                _owner.Completed(this);
+            }
+            else
+            {
+                Dispatcher.UIThread.Post(() => _owner.Completed(this));
+            }
         }
     }
 }

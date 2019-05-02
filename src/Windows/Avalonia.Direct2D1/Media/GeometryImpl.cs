@@ -11,85 +11,56 @@ namespace Avalonia.Direct2D1.Media
     /// </summary>
     public abstract class GeometryImpl : IGeometryImpl
     {
-        private TransformedGeometry _transformed;
-
-        /// <summary>
-        /// Gets the geometry's bounding rectangle.
-        /// </summary>
-        public abstract Rect Bounds
+        public GeometryImpl(Geometry geometry)
         {
-            get;
+            Geometry = geometry;
         }
 
-        /// <summary>
-        /// Gets the geomentry without any transforms applied.
-        /// </summary>
-        public abstract Geometry DefiningGeometry
+        /// <inheritdoc/>
+        public Rect Bounds => Geometry.GetWidenedBounds(0).ToAvalonia();
+
+        public Geometry Geometry { get; }
+
+        /// <inheritdoc/>
+        public Rect GetRenderBounds(Avalonia.Media.Pen pen)
         {
-            get;
+            return Geometry.GetWidenedBounds((float)(pen?.Thickness ?? 0)).ToAvalonia();
         }
 
-        /// <summary>
-        /// Gets the Direct2D <see cref="Geometry"/>.
-        /// </summary>
-        public Geometry Geometry => _transformed ?? DefiningGeometry;
-
-        /// <summary>
-        /// Gets or sets the transform for the geometry.
-        /// </summary>
-        public Matrix Transform
-        {
-            get
-            {
-                return _transformed != null ?
-                    _transformed.Transform.ToAvalonia() :
-                    Matrix.Identity;
-            }
-
-            set
-            {
-                if (value != Transform)
-                {
-                    if (_transformed != null)
-                    {
-                        _transformed.Dispose();
-                        _transformed = null;
-                    }
-
-                    if (!value.IsIdentity)
-                    {
-                        Factory factory = AvaloniaLocator.Current.GetService<Factory>();
-                        _transformed = new TransformedGeometry(
-                            factory,
-                            DefiningGeometry,
-                            value.ToDirect2D());
-                    }
-                }
-            }
-        }
-
-        /// <summary>
-        /// Gets the geometry's bounding rectangle with the specified stroke thickness.
-        /// </summary>
-        /// <param name="strokeThickness">The stroke thickness.</param>
-        /// <returns>The bounding rectangle.</returns>
-        public Rect GetRenderBounds(double strokeThickness)
-        {
-            if (_transformed != null)
-            {
-                return _transformed.GetWidenedBounds((float)strokeThickness).ToAvalonia();
-            }
-            else
-            {
-                return DefiningGeometry.GetWidenedBounds((float)strokeThickness).ToAvalonia();
-            }
-        }
-
-
+        /// <inheritdoc/>
         public bool FillContains(Point point)
         {
             return Geometry.FillContainsPoint(point.ToSharpDX());
         }
 
+        /// <inheritdoc/>
+        public IGeometryImpl Intersect(IGeometryImpl geometry)
+        {
+            var result = new PathGeometry(Geometry.Factory);
+
+            using (var sink = result.Open())
+            {
+                Geometry.Combine(((GeometryImpl)geometry).Geometry, CombineMode.Intersect, sink);
+                return new StreamGeometryImpl(result);
+            }
+        }
+
+        /// <inheritdoc/>
+        public bool StrokeContains(Avalonia.Media.Pen pen, Point point)
+        {
+            return Geometry.StrokeContainsPoint(point.ToSharpDX(), (float)(pen?.Thickness ?? 0));
+        }
+
+        public ITransformedGeometryImpl WithTransform(Matrix transform)
+        {
+            return new TransformedGeometryImpl(
+                new TransformedGeometry(
+                    Direct2D1Platform.Direct2D1Factory,
+                    GetSourceGeometry(),
+                    transform.ToDirect2D()),
+                this);
+        }
+
+        protected virtual Geometry GetSourceGeometry() => Geometry;
     }
 }

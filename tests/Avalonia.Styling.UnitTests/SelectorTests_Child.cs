@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reactive;
 using System.Reactive.Linq;
+using System.Threading.Tasks;
 using Avalonia.Collections;
 using Avalonia.Controls;
 using Avalonia.Data;
@@ -26,7 +27,7 @@ namespace Avalonia.Styling.UnitTests
 
             var selector = default(Selector).OfType<TestLogical1>().Child().OfType<TestLogical2>();
 
-            Assert.True(selector.Match(child).ImmediateResult);
+            Assert.Equal(SelectorMatchResult.AlwaysThisInstance, selector.Match(child).Result);
         }
 
         [Fact]
@@ -41,11 +42,11 @@ namespace Avalonia.Styling.UnitTests
 
             var selector = default(Selector).OfType<TestLogical1>().Child().OfType<TestLogical3>();
 
-            Assert.False(selector.Match(child).ImmediateResult);
+            Assert.Equal(SelectorMatchResult.NeverThisInstance, selector.Match(child).Result);
         }
 
         [Fact]
-        public async void Child_Matches_Control_When_It_Is_Child_OfType_And_Class()
+        public async Task Child_Matches_Control_When_It_Is_Child_OfType_And_Class()
         {
             var parent = new TestLogical1();
             var child = new TestLogical2();
@@ -53,7 +54,7 @@ namespace Avalonia.Styling.UnitTests
             child.LogicalParent = parent;
 
             var selector = default(Selector).OfType<TestLogical1>().Class("foo").Child().OfType<TestLogical2>();
-            var activator = selector.Match(child).ObservableResult;
+            var activator = selector.Match(child).Activator;
             var result = new List<bool>();
 
             Assert.False(await activator.Take(1));
@@ -69,7 +70,7 @@ namespace Avalonia.Styling.UnitTests
             var control = new TestLogical3();
             var selector = default(Selector).OfType<TestLogical1>().Child().OfType<TestLogical3>();
 
-            Assert.False(selector.Match(control).ImmediateResult);
+            Assert.Equal(SelectorMatchResult.NeverThisInstance, selector.Match(control).Result);
         }
 
         [Fact]
@@ -88,6 +89,7 @@ namespace Avalonia.Styling.UnitTests
             }
 
             public event EventHandler<AvaloniaPropertyChangedEventArgs> PropertyChanged;
+            public event EventHandler<AvaloniaPropertyChangedEventArgs> InheritablePropertyChanged;
             public event EventHandler<LogicalTreeAttachmentEventArgs> AttachedToLogicalTree;
             public event EventHandler<LogicalTreeAttachmentEventArgs> DetachedFromLogicalTree;
 
@@ -134,6 +136,11 @@ namespace Avalonia.Styling.UnitTests
                 throw new NotImplementedException();
             }
 
+            public bool IsAnimating(AvaloniaProperty property)
+            {
+                throw new NotImplementedException();
+            }
+
             public bool IsSet(AvaloniaProperty property)
             {
                 throw new NotImplementedException();
@@ -144,7 +151,17 @@ namespace Avalonia.Styling.UnitTests
                 throw new NotImplementedException();
             }
 
+            public void NotifyAttachedToLogicalTree(LogicalTreeAttachmentEventArgs e)
+            {
+                throw new NotImplementedException();
+            }
+
             public void NotifyDetachedFromLogicalTree(LogicalTreeAttachmentEventArgs e)
+            {
+                throw new NotImplementedException();
+            }
+
+            public void NotifyResourcesChanged(ResourcesChangedEventArgs e)
             {
                 throw new NotImplementedException();
             }

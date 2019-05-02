@@ -12,6 +12,7 @@ namespace Avalonia.Styling.UnitTests
     public abstract class TestTemplatedControl : ITemplatedControl, IStyleable
     {
         public event EventHandler<AvaloniaPropertyChangedEventArgs> PropertyChanged;
+        public event EventHandler<AvaloniaPropertyChangedEventArgs> InheritablePropertyChanged;
 
         public abstract Classes Classes
         {
@@ -63,6 +64,11 @@ namespace Avalonia.Styling.UnitTests
         }
 
         public IDisposable Bind<T>(AvaloniaProperty<T> property, IObservable<T> source, BindingPriority priority = BindingPriority.LocalValue)
+        {
+            throw new NotImplementedException();
+        }
+
+        public bool IsAnimating(AvaloniaProperty property)
         {
             throw new NotImplementedException();
         }

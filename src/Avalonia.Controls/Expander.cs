@@ -1,6 +1,5 @@
 using Avalonia.Animation;
 using Avalonia.Controls.Primitives;
-using Avalonia.VisualTree;
 
 namespace Avalonia.Controls
 {
@@ -31,16 +30,17 @@ namespace Avalonia.Controls
             AvaloniaProperty.RegisterDirect<Expander, bool>(
                 nameof(IsExpanded),
                 o => o.IsExpanded,
-                (o, v) => o.IsExpanded = v);
+                (o, v) => o.IsExpanded = v,
+                defaultBindingMode: Data.BindingMode.TwoWay);
 
         static Expander()
         {
-            PseudoClass(ExpandDirectionProperty, d => d == ExpandDirection.Down, ":down");
-            PseudoClass(ExpandDirectionProperty, d => d == ExpandDirection.Up, ":up");
-            PseudoClass(ExpandDirectionProperty, d => d == ExpandDirection.Left, ":left");
-            PseudoClass(ExpandDirectionProperty, d => d == ExpandDirection.Right, ":right");
+            PseudoClass<Expander, ExpandDirection>(ExpandDirectionProperty, d => d == ExpandDirection.Down, ":down");
+            PseudoClass<Expander, ExpandDirection>(ExpandDirectionProperty, d => d == ExpandDirection.Up, ":up");
+            PseudoClass<Expander, ExpandDirection>(ExpandDirectionProperty, d => d == ExpandDirection.Left, ":left");
+            PseudoClass<Expander, ExpandDirection>(ExpandDirectionProperty, d => d == ExpandDirection.Right, ":right");
 
-            PseudoClass(IsExpandedProperty, ":expanded");
+            PseudoClass<Expander>(IsExpandedProperty, ":expanded");
 
             IsExpandedProperty.Changed.AddClassHandler<Expander>(x => x.OnIsExpandedChanged);
         }
@@ -65,9 +65,7 @@ namespace Avalonia.Controls
 
         protected virtual void OnIsExpandedChanged(AvaloniaPropertyChangedEventArgs e)
         {
-            IVisual visualContent = Presenter;
-
-            if (Content != null && ContentTransition != null && visualContent != null)
+            if (Content != null && ContentTransition != null && Presenter is Visual visualContent)
             {
                 bool forward = ExpandDirection == ExpandDirection.Left ||
                                 ExpandDirection == ExpandDirection.Up;

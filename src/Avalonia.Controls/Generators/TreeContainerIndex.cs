@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace Avalonia.Controls.Generators
 {
@@ -21,7 +22,7 @@ namespace Avalonia.Controls.Generators
         private readonly Dictionary<IControl, object> _containerToItem = new Dictionary<IControl, object>();
 
         /// <summary>
-        /// Signalled whenever new containers are materialized.
+        /// Signaled whenever new containers are materialized.
         /// </summary>
         public event EventHandler<ItemContainerEventArgs> Materialized;
 
@@ -33,7 +34,12 @@ namespace Avalonia.Controls.Generators
         /// <summary>
         /// Gets the currently materialized containers.
         /// </summary>
-        public IEnumerable<IControl> Items => _containerToItem.Keys;
+        public IEnumerable<IControl> Containers => _containerToItem.Keys;
+
+        /// <summary>
+        /// Gets the items of currently materialized containers.
+        /// </summary>
+        public IEnumerable<object> Items => _containerToItem.Values;
 
         /// <summary>
         /// Adds an entry to the index.
@@ -68,8 +74,9 @@ namespace Avalonia.Controls.Generators
         /// <summary>
         /// Removes a set of containers from the index.
         /// </summary>
+        /// <param name="startingIndex">The index of the first item.</param>
         /// <param name="containers">The item containers.</param>
-        public void Remove(IEnumerable<ItemContainerInfo> containers)
+        public void Remove(int startingIndex, IEnumerable<ItemContainerInfo> containers)
         {
             foreach (var container in containers)
             {
@@ -77,6 +84,10 @@ namespace Avalonia.Controls.Generators
                 _containerToItem.Remove(container.ContainerControl);
                 _itemToContainer.Remove(item);
             }
+
+            Dematerialized?.Invoke(
+                this,
+                new ItemContainerEventArgs(startingIndex, containers.ToList()));
         }
 
         /// <summary>

@@ -18,7 +18,10 @@ namespace Avalonia.UnitTests
 
         public TestTemplatedRoot()
         {
-            Template = new FuncControlTemplate<TestTemplatedRoot>(x => new ContentPresenter());
+            Template = new FuncControlTemplate<TestTemplatedRoot>(x => new ContentPresenter
+            {
+                Name = "PART_ContentPresenter",
+            });
         }
 
         public event EventHandler<NameScopeEventArgs> Registered
@@ -39,15 +42,27 @@ namespace Avalonia.UnitTests
 
         public double LayoutScaling => 1;
 
-        public ILayoutManager LayoutManager => AvaloniaLocator.Current.GetService<ILayoutManager>();
+        public ILayoutManager LayoutManager { get; set; } = new LayoutManager();
+
+        public double RenderScaling => 1;
 
         public IRenderTarget RenderTarget => null;
 
-        public IRenderQueueManager RenderQueueManager => null;
+        public IRenderer Renderer => null;
 
-        public Point PointToClient(Point p) => p;
+        public IRenderTarget CreateRenderTarget()
+        {
+            throw new NotImplementedException();
+        }
 
-        public Point PointToScreen(Point p) => p;
+        public void Invalidate(Rect rect)
+        {
+            throw new NotImplementedException();
+        }
+
+        public Point PointToClient(PixelPoint p) => p.ToPoint(1);
+
+        public PixelPoint PointToScreen(Point p) => PixelPoint.FromPoint(p, 1);
 
         void INameScope.Register(string name, object element)
         {

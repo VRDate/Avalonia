@@ -69,7 +69,7 @@ namespace Avalonia.Controls.UnitTests.Presenters
             var parent = new TestItemsControl();
             var target = new ItemsPresenter
             {
-                TemplatedParent = parent,
+                [StyledElement.TemplatedParentProperty] = parent,
             };
 
             Assert.IsType<ItemContainerGenerator<TestItem>>(target.ItemContainerGenerator);
@@ -87,7 +87,7 @@ namespace Avalonia.Controls.UnitTests.Presenters
             target.ApplyTemplate();
             items.RemoveAt(0);
 
-            Assert.Equal(1, target.Panel.Children.Count);
+            Assert.Single(target.Panel.Children);
             Assert.Equal("bar", ((ContentPresenter)target.Panel.Children[0]).Content);
             Assert.Equal("bar", ((ContentPresenter)target.ItemContainerGenerator.ContainerFromIndex(0)).Content);
         }
@@ -209,6 +209,37 @@ namespace Avalonia.Controls.UnitTests.Presenters
             Assert.Equal(new[] { "foo", "bar" }, text);
             Assert.NotNull(target.ItemContainerGenerator.ContainerFromIndex(0));
             Assert.NotNull(target.ItemContainerGenerator.ContainerFromIndex(1));
+        }
+
+        [Fact]
+        public void Inserting_Then_Removing_Should_Add_Remove_Containers()
+        {
+            var items = new AvaloniaList<string>(Enumerable.Range(0, 5).Select(x => $"Item {x}"));
+            var toAdd = Enumerable.Range(0, 3).Select(x => $"Added Item {x}").ToArray();
+            var target = new ItemsPresenter
+            {
+                VirtualizationMode = ItemVirtualizationMode.None,
+                Items = items,
+                ItemTemplate = new FuncDataTemplate<string>(x => new TextBlock { Height = 10 }),
+            };
+
+            target.ApplyTemplate();
+
+            Assert.Equal(items.Count, target.Panel.Children.Count);
+
+            foreach (var item in toAdd)
+            {
+                items.Insert(1, item);
+            }
+
+            Assert.Equal(items.Count, target.Panel.Children.Count);
+
+            foreach (var item in toAdd)
+            {
+                items.Remove(item);
+            }
+
+            Assert.Equal(items.Count, target.Panel.Children.Count);
         }
 
         [Fact]

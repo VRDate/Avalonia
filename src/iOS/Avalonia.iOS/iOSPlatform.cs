@@ -1,37 +1,18 @@
-using System;
-using System.Reflection;
+using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.iOS;
 using Avalonia.Platform;
+using Avalonia.Rendering;
 using Avalonia.Shared.PlatformSupport;
-using Avalonia.Skia;
-using UIKit;
-using Avalonia.Controls;
 
 namespace Avalonia
 {
     public static class iOSApplicationExtensions
     {
-        public static AppBuilder UseiOS(this AppBuilder builder)
+        public static T UseiOS<T>(this T builder) where T : AppBuilderBase<T>, new()
         {
-            builder.WindowingSubsystem = Avalonia.iOS.iOSPlatform.Initialize;
-            return builder;
-        }
-
-        // TODO: Can we merge this with UseSkia somehow once HW/platform cleanup is done?
-        public static AppBuilder UseSkiaViewHost(this AppBuilder builder)
-        {
-            var window = new UIWindow(UIScreen.MainScreen.Bounds);
-            var controller = new AvaloniaViewController(window);
-            window.RootViewController = controller;
-            window.MakeKeyAndVisible();
-
-            AvaloniaLocator.CurrentMutable
-                .Bind<IWindowingPlatform>().ToConstant(new WindowingPlatformImpl(controller.AvaloniaView));
-
-            SkiaPlatform.Initialize();
-
+            builder.UseWindowingSubsystem(iOSPlatform.Initialize, "iOS");
             return builder;
         }
     }
@@ -39,10 +20,7 @@ namespace Avalonia
 
 namespace Avalonia.iOS
 {
-    // TODO: Perhaps we should make this class handle all these interfaces directly, like we 
-    // do for Win32 and Gtk platforms
-    //
-    public class iOSPlatform //: IPlatformThreadingInterface, IPlatformSettings, IWindowingPlatform
+    public class iOSPlatform
     {
         internal static MouseDevice MouseDevice;
         internal static KeyboardDevice KeyboardDevice;
@@ -53,15 +31,19 @@ namespace Avalonia.iOS
             KeyboardDevice = new KeyboardDevice();
 
             AvaloniaLocator.CurrentMutable
-                .Bind<IPclPlatformWrapper>().ToSingleton<PclPlatformWrapper>()
+                .Bind<IRuntimePlatform>().ToSingleton<StandardRuntimePlatform>()
                 .Bind<IClipboard>().ToTransient<Clipboard>()
                 // TODO: what does this look like for iOS??
                 //.Bind<ISystemDialogImpl>().ToTransient<SystemDialogImpl>()
                 .Bind<IStandardCursorFactory>().ToTransient<CursorFactory>()
                 .Bind<IKeyboardDevice>().ToConstant(KeyboardDevice)
-                .Bind<IMouseDevice>().ToConstant(MouseDevice)
                 .Bind<IPlatformSettings>().ToSingleton<PlatformSettings>()
-                .Bind<IPlatformThreadingInterface>().ToConstant(PlatformThreadingInterface.Instance);
+                .Bind<IPlatformThreadingInterface>().ToConstant(PlatformThreadingInterface.Instance)
+                .Bind<IPlatformIconLoader>().ToSingleton<PlatformIconLoader>()
+                .Bind<IWindowingPlatform>().ToSingleton<WindowingPlatformImpl>()
+                .Bind<IRenderTimer>().ToSingleton<DisplayLinkRenderTimer>()
+                .Bind<PlatformHotkeyConfiguration>().ToSingleton<PlatformHotkeyConfiguration>()
+                .Bind<IRenderLoop>().ToSingleton<RenderLoop>();
         }
     }
 }

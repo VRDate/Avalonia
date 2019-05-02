@@ -9,8 +9,6 @@ using Avalonia.Controls;
 using Avalonia.Controls.Presenters;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
-using Avalonia.Controls.UnitTests;
-using Avalonia.Controls.UnitTests.Primitives;
 using Avalonia.Diagnostics;
 using Avalonia.Input;
 using Avalonia.Platform;
@@ -19,9 +17,12 @@ using Avalonia.Shared.PlatformSupport;
 using Avalonia.Styling;
 using Avalonia.Themes.Default;
 using Avalonia.VisualTree;
-using Ploeh.AutoFixture;
-using Ploeh.AutoFixture.AutoMoq;
 using Xunit;
+using Avalonia.Media;
+using System;
+using System.Collections.Generic;
+using Avalonia.Controls.UnitTests;
+using Avalonia.UnitTests;
 
 namespace Avalonia.Layout.UnitTests
 {
@@ -56,11 +57,12 @@ namespace Avalonia.Layout.UnitTests
                     }
                 };
 
-                LayoutManager.Instance.ExecuteInitialLayoutPass(window);
+                window.Show();
+                window.LayoutManager.ExecuteInitialLayoutPass(window);
 
                 Assert.Equal(new Size(400, 400), border.Bounds.Size);
                 textBlock.Width = 200;
-                LayoutManager.Instance.ExecuteLayoutPass();
+                window.LayoutManager.ExecuteLayoutPass();
 
                 Assert.Equal(new Size(200, 400), border.Bounds.Size);
             }
@@ -85,7 +87,7 @@ namespace Avalonia.Layout.UnitTests
                     {
                         Width = 200,
                         Height = 200,
-                        CanScrollHorizontally = true,
+                        HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
                         HorizontalAlignment = HorizontalAlignment.Center,
                         VerticalAlignment = VerticalAlignment.Center,
                         Content = textBlock = new TextBlock
@@ -97,7 +99,10 @@ namespace Avalonia.Layout.UnitTests
                     }
                 };
 
-                LayoutManager.Instance.ExecuteInitialLayoutPass(window);
+                window.Resources["ScrollBarThickness"] = 10.0;
+
+                window.Show();
+                window.LayoutManager.ExecuteInitialLayoutPass(window);
 
                 Assert.Equal(new Size(800, 600), window.Bounds.Size);
                 Assert.Equal(new Size(200, 200), scrollViewer.Bounds.Size);
@@ -108,7 +113,7 @@ namespace Avalonia.Layout.UnitTests
                 var presenters = scrollViewer.GetTemplateChildren().OfType<ScrollContentPresenter>().ToList();
 
                 Assert.Equal(2, scrollBars.Count);
-                Assert.Equal(1, presenters.Count);
+                Assert.Single(presenters);
 
                 var presenter = presenters[0];
                 Assert.Equal(new Size(190, 190), presenter.Bounds.Size);
@@ -130,32 +135,82 @@ namespace Avalonia.Layout.UnitTests
             return v.Bounds.Position;
         }
 
+        class FormattedTextMock : IFormattedTextImpl
+        {
+            public FormattedTextMock(string text)
+            {
+                Text = text;
+            }
+
+            public Size Constraint { get; set; }
+
+            public string Text { get; }
+
+            public Rect Bounds => Rect.Empty;
+
+            public void Dispose()
+            {
+            }
+
+            public IEnumerable<FormattedTextLine> GetLines() => new FormattedTextLine[0];
+
+            public TextHitTestResult HitTestPoint(Point point) => new TextHitTestResult();
+
+            public Rect HitTestTextPosition(int index) => new Rect();
+
+            public IEnumerable<Rect> HitTestTextRange(int index, int length) => new Rect[0];
+
+            public Size Measure() => Constraint;
+        }
+
         private void RegisterServices()
         {
-            var fixture = new Fixture().Customize(new AutoMoqCustomization());
-
-            var formattedText = fixture.Create<IFormattedTextImpl>();
             var globalStyles = new Mock<IGlobalStyles>();
-            var renderInterface = fixture.Create<IPlatformRenderInterface>();
-            var renderManager = fixture.Create<IRenderQueueManager>();
+            var globalStylesResources = globalStyles.As<IResourceNode>();
+            var outObj = (object)10;
+            globalStylesResources.Setup(x => x.TryGetResource("FontSizeNormal", out outObj)).Returns(true);
+
+            var renderInterface = new Mock<IPlatformRenderInterface>();
+            renderInterface.Setup(x =>
+                x.CreateFormattedText(
+                    It.IsAny<string>(),
+                    It.IsAny<Typeface>(),
+                    It.IsAny<TextAlignment>(),
+                    It.IsAny<TextWrapping>(),
+                    It.IsAny<Size>(),
+                    It.IsAny<IReadOnlyList<FormattedTextStyleSpan>>()))
+                .Returns(new FormattedTextMock("TEST"));
+
+            var streamGeometry = new Mock<IStreamGeometryImpl>();
+            streamGeometry.Setup(x =>
+                    x.Open())
+                .Returns(new Mock<IStreamGeometryContextImpl>().Object);
+
+            renderInterface.Setup(x =>
+                    x.CreateStreamGeometry())
+                .Returns(streamGeometry.Object);
+
             var windowImpl = new Mock<IWindowImpl>();
 
-            windowImpl.SetupProperty(x => x.ClientSize);
+            Size clientSize = default(Size);
+
+            windowImpl.SetupGet(x => x.ClientSize).Returns(() => clientSize);
+            windowImpl.Setup(x => x.Resize(It.IsAny<Size>())).Callback<Size>(s => clientSize = s);
             windowImpl.Setup(x => x.MaxClientSize).Returns(new Size(1024, 1024));
             windowImpl.SetupGet(x => x.Scaling).Returns(1);
 
             AvaloniaLocator.CurrentMutable
+                .Bind<IStandardCursorFactory>().ToConstant(new CursorFactoryMock())
                 .Bind<IAssetLoader>().ToConstant(new AssetLoader())
                 .Bind<IInputManager>().ToConstant(new Mock<IInputManager>().Object)
                 .Bind<IGlobalStyles>().ToConstant(globalStyles.Object)
-                .Bind<ILayoutManager>().ToConstant(new LayoutManager())
-                .Bind<IPclPlatformWrapper>().ToConstant(new PclPlatformWrapper())
-                .Bind<IPlatformRenderInterface>().ToConstant(renderInterface)
-                .Bind<IRenderQueueManager>().ToConstant(renderManager)
+                .Bind<IRuntimePlatform>().ToConstant(new AppBuilder().RuntimePlatform)
+                .Bind<IPlatformRenderInterface>().ToConstant(renderInterface.Object)
                 .Bind<IStyler>().ToConstant(new Styler())
-                .Bind<IWindowingPlatform>().ToConstant(new WindowingPlatformMock(() => windowImpl.Object));
+                .Bind<IWindowingPlatform>().ToConstant(new Avalonia.Controls.UnitTests.WindowingPlatformMock(() => windowImpl.Object));
 
             var theme = new DefaultTheme();
+            globalStyles.Setup(x => x.IsStylesInitialized).Returns(true);
             globalStyles.Setup(x => x.Styles).Returns(theme);
         }
     }

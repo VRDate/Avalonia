@@ -14,23 +14,23 @@ using Xunit;
 
 namespace Avalonia.Styling.UnitTests
 {
-    public class SelectorTests_Descendent
+    public class SelectorTests_Descendant
     {
         [Fact]
-        public void Descendent_Matches_Control_When_It_Is_Child_OfType()
+        public void Descendant_Matches_Control_When_It_Is_Child_OfType()
         {
             var parent = new TestLogical1();
             var child = new TestLogical2();
 
             child.LogicalParent = parent;
 
-            var selector = default(Selector).OfType<TestLogical1>().Descendent().OfType<TestLogical2>();
+            var selector = default(Selector).OfType<TestLogical1>().Descendant().OfType<TestLogical2>();
 
-            Assert.True(selector.Match(child).ImmediateResult);
+            Assert.Equal(SelectorMatchResult.AlwaysThisInstance, selector.Match(child).Result);
         }
 
         [Fact]
-        public void Descendent_Matches_Control_When_It_Is_Descendent_OfType()
+        public void Descendant_Matches_Control_When_It_Is_Descendant_OfType()
         {
             var grandparent = new TestLogical1();
             var parent = new TestLogical2();
@@ -39,13 +39,13 @@ namespace Avalonia.Styling.UnitTests
             parent.LogicalParent = grandparent;
             child.LogicalParent = parent;
 
-            var selector = default(Selector).OfType<TestLogical1>().Descendent().OfType<TestLogical3>();
+            var selector = default(Selector).OfType<TestLogical1>().Descendant().OfType<TestLogical3>();
 
-            Assert.True(selector.Match(child).ImmediateResult);
+            Assert.Equal(SelectorMatchResult.AlwaysThisInstance, selector.Match(child).Result);
         }
 
         [Fact]
-        public async Task Descendent_Matches_Control_When_It_Is_Descendent_OfType_And_Class()
+        public async Task Descendant_Matches_Control_When_It_Is_Descendant_OfType_And_Class()
         {
             var grandparent = new TestLogical1();
             var parent = new TestLogical2();
@@ -55,14 +55,14 @@ namespace Avalonia.Styling.UnitTests
             parent.LogicalParent = grandparent;
             child.LogicalParent = parent;
 
-            var selector = default(Selector).OfType<TestLogical1>().Class("foo").Descendent().OfType<TestLogical3>();
-            var activator = selector.Match(child).ObservableResult;
+            var selector = default(Selector).OfType<TestLogical1>().Class("foo").Descendant().OfType<TestLogical3>();
+            var activator = selector.Match(child).Activator;
 
             Assert.True(await activator.Take(1));
         }
 
         [Fact]
-        public async Task Descendent_Doesnt_Match_Control_When_It_Is_Descendent_OfType_But_Wrong_Class()
+        public async Task Descendant_Doesnt_Match_Control_When_It_Is_Descendant_OfType_But_Wrong_Class()
         {
             var grandparent = new TestLogical1();
             var parent = new TestLogical2();
@@ -73,14 +73,14 @@ namespace Avalonia.Styling.UnitTests
             parent.Classes.Add("foo");
             child.LogicalParent = parent;
 
-            var selector = default(Selector).OfType<TestLogical1>().Class("foo").Descendent().OfType<TestLogical3>();
-            var activator = selector.Match(child).ObservableResult;
+            var selector = default(Selector).OfType<TestLogical1>().Class("foo").Descendant().OfType<TestLogical3>();
+            var activator = selector.Match(child).Activator;
 
             Assert.False(await activator.Take(1));
         }
 
         [Fact]
-        public async Task Descendent_Matches_Any_Ancestor()
+        public async Task Descendant_Matches_Any_Ancestor()
         {
             var grandparent = new TestLogical1();
             var parent = new TestLogical1();
@@ -89,8 +89,8 @@ namespace Avalonia.Styling.UnitTests
             parent.LogicalParent = grandparent;
             child.LogicalParent = parent;
 
-            var selector = default(Selector).OfType<TestLogical1>().Class("foo").Descendent().OfType<TestLogical3>();
-            var activator = selector.Match(child).ObservableResult;
+            var selector = default(Selector).OfType<TestLogical1>().Class("foo").Descendant().OfType<TestLogical3>();
+            var activator = selector.Match(child).Activator;
 
             Assert.False(await activator.Take(1));
             parent.Classes.Add("foo");
@@ -104,9 +104,9 @@ namespace Avalonia.Styling.UnitTests
         }
 
         [Fact]
-        public void Descendent_Selector_Should_Have_Correct_String_Representation()
+        public void Descendant_Selector_Should_Have_Correct_String_Representation()
         {
-            var selector = default(Selector).OfType<TestLogical1>().Class("foo").Descendent().OfType<TestLogical3>();
+            var selector = default(Selector).OfType<TestLogical1>().Class("foo").Descendant().OfType<TestLogical3>();
 
             Assert.Equal("TestLogical1.foo TestLogical3", selector.ToString());
         }
@@ -119,6 +119,7 @@ namespace Avalonia.Styling.UnitTests
             }
 
             public event EventHandler<AvaloniaPropertyChangedEventArgs> PropertyChanged;
+            public event EventHandler<AvaloniaPropertyChangedEventArgs> InheritablePropertyChanged;
             public event EventHandler<LogicalTreeAttachmentEventArgs> AttachedToLogicalTree;
             public event EventHandler<LogicalTreeAttachmentEventArgs> DetachedFromLogicalTree;
 
@@ -165,6 +166,11 @@ namespace Avalonia.Styling.UnitTests
                 throw new NotImplementedException();
             }
 
+            public bool IsAnimating(AvaloniaProperty property)
+            {
+                throw new NotImplementedException();
+            }
+
             public bool IsSet(AvaloniaProperty property)
             {
                 throw new NotImplementedException();
@@ -175,7 +181,17 @@ namespace Avalonia.Styling.UnitTests
                 throw new NotImplementedException();
             }
 
+            public void NotifyAttachedToLogicalTree(LogicalTreeAttachmentEventArgs e)
+            {
+                throw new NotImplementedException();
+            }
+
             public void NotifyDetachedFromLogicalTree(LogicalTreeAttachmentEventArgs e)
+            {
+                throw new NotImplementedException();
+            }
+
+            public void NotifyResourcesChanged(ResourcesChangedEventArgs e)
             {
                 throw new NotImplementedException();
             }

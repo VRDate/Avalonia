@@ -6,24 +6,22 @@ using System.Collections.Specialized;
 using System.Linq;
 using Avalonia.VisualTree;
 using Avalonia.Media;
+using Avalonia.Rendering;
 
 namespace Avalonia.Controls.Primitives
 {
     // TODO: Need to track position of adorned elements and move the adorner if they move.
-    public class AdornerLayer : Panel
+    public class AdornerLayer : Panel, ICustomSimpleHitTest
     {
-        public static AttachedProperty<Visual> AdornedElementProperty =
+        public static readonly AttachedProperty<Visual> AdornedElementProperty =
             AvaloniaProperty.RegisterAttached<AdornerLayer, Visual, Visual>("AdornedElement");
 
         private static readonly AttachedProperty<AdornedElementInfo> s_adornedElementInfoProperty =
             AvaloniaProperty.RegisterAttached<AdornerLayer, Visual, AdornedElementInfo>("AdornedElementInfo");
 
-        private readonly BoundsTracker _tracker = new BoundsTracker();
-
         static AdornerLayer()
         {
             AdornedElementProperty.Changed.Subscribe(AdornedElementChanged);
-            IsHitTestVisibleProperty.OverrideDefaultValue(typeof(AdornerLayer), false);
         }
 
         public AdornerLayer()
@@ -55,13 +53,14 @@ namespace Avalonia.Controls.Primitives
 
             foreach (var child in Children)
             {
-                var info = (AdornedElementInfo)child.GetValue(s_adornedElementInfoProperty);
+                var info = child.GetValue(s_adornedElementInfoProperty);
 
-                if (info != null)
+                if (info != null && info.Bounds.HasValue)
                 {
-                    child.RenderTransform = new MatrixTransform(info.Bounds.Transform);
+                    child.RenderTransform = new MatrixTransform(info.Bounds.Value.Transform);
                     child.RenderTransformOrigin = new RelativePoint(new Point(0,0), RelativeUnit.Absolute);
-                    child.Arrange(info.Bounds.Bounds);
+                    UpdateClip(child, info.Bounds.Value);
+                    child.Arrange(info.Bounds.Value.Bounds);
                 }
                 else
                 {
@@ -78,6 +77,19 @@ namespace Avalonia.Controls.Primitives
             var adorned = (Visual)e.NewValue;
             var layer = adorner.GetVisualParent<AdornerLayer>();
             layer?.UpdateAdornedElement(adorner, adorned);
+        }
+
+        private void UpdateClip(IControl control, TransformedBounds bounds)
+        {
+            var clip = control.Clip as RectangleGeometry;
+
+            if (clip == null)
+            {
+                clip = new RectangleGeometry { Transform = new MatrixTransform() };
+                control.Clip = clip;
+            }
+
+            clip.Rect = bounds.Bounds;
         }
 
         private void ChildrenCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
@@ -118,7 +130,7 @@ namespace Avalonia.Controls.Primitives
                     adorner.SetValue(s_adornedElementInfoProperty, info);
                 }
 
-                info.Subscription = _tracker.Track(adorned).Subscribe(x =>
+                info.Subscription = adorned.GetObservable(TransformedBoundsProperty).Subscribe(x =>
                 {
                     info.Bounds = x;
                     InvalidateArrange();
@@ -126,11 +138,16 @@ namespace Avalonia.Controls.Primitives
             }
         }
 
+        public bool HitTest(Point point)
+        {
+            return Children.Any(ctrl => ctrl.TransformedBounds?.Contains(point) == true);
+        }
+
         private class AdornedElementInfo
         {
             public IDisposable Subscription { get; set; }
 
-            public TransformedBounds Bounds { get; set; }
+            public TransformedBounds? Bounds { get; set; }
         }
     }
 }

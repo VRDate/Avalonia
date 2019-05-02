@@ -24,16 +24,18 @@ namespace Avalonia.Controls.Templates
         {
             foreach (IControl child in control.GetVisualChildren())
             {
-                if (child.TemplatedParent == templatedParent)
+                var childTemplatedParent = child.TemplatedParent;
+
+                if (childTemplatedParent == templatedParent)
                 {
                     yield return child;
                 }
 
-                if (child.TemplatedParent != null)
+                if (childTemplatedParent != null)
                 {
-                    foreach (var descendent in GetTemplateChildren(child, templatedParent))
+                    foreach (var descendant in GetTemplateChildren(child, templatedParent))
                     {
-                        yield return descendent;
+                        yield return descendant;
                     }
                 }
             }

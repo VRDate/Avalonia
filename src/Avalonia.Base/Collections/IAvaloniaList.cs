@@ -6,7 +6,7 @@ using System.Collections.Generic;
 namespace Avalonia.Collections
 {
     /// <summary>
-    /// A notiftying list.
+    /// A notifying list.
     /// </summary>
     /// <typeparam name="T">The type of the items in the list.</typeparam>
     public interface IAvaloniaList<T> : IList<T>, IAvaloniaReadOnlyList<T>
@@ -35,6 +35,21 @@ namespace Avalonia.Collections
         /// <param name="index">The index.</param>
         /// <param name="items">The items.</param>
         void InsertRange(int index, IEnumerable<T> items);
+
+        /// <summary>
+        /// Moves an item to a new index.
+        /// </summary>
+        /// <param name="oldIndex">The index of the item to move.</param>
+        /// <param name="newIndex">The index to move the item to.</param>
+        void Move(int oldIndex, int newIndex);
+
+        /// <summary>
+        /// Moves multiple items to a new index.
+        /// </summary>
+        /// <param name="oldIndex">The first index of the items to move.</param>
+        /// <param name="count">The number of items to move.</param>
+        /// <param name="newIndex">The index to move the items to.</param>
+        void MoveRange(int oldIndex, int count, int newIndex);
 
         /// <summary>
         /// Removes multiple items from the collection.

@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Reactive.Disposables;
 using Avalonia.Data;
-using Avalonia.Logging;
 
 namespace Avalonia
 {
@@ -33,7 +32,6 @@ namespace Avalonia
     /// </remarks>
     internal class PriorityLevel
     {
-        private PriorityValue _owner;
         private object _directValue;
         private int _nextIndex;
 
@@ -48,12 +46,17 @@ namespace Avalonia
         {
             Contract.Requires<ArgumentNullException>(owner != null);
 
-            _owner = owner;
+            Owner = owner;
             Priority = priority;
             Value = _directValue = AvaloniaProperty.UnsetValue;
             ActiveBindingIndex = -1;
             Bindings = new LinkedList<PriorityBindingEntry>();
         }
+
+        /// <summary>
+        /// Gets the owner of the level.
+        /// </summary>
+        public PriorityValue Owner { get; }
 
         /// <summary>
         /// Gets the priority of this level.
@@ -73,7 +76,7 @@ namespace Avalonia
             set
             {
                 Value = _directValue = value;
-                _owner.LevelValueChanged(this);
+                Owner.LevelValueChanged(this);
             }
         }
 
@@ -109,12 +112,16 @@ namespace Avalonia
 
             return Disposable.Create(() =>
             {
-                Bindings.Remove(node);
-                entry.Dispose();
-
-                if (entry.Index >= ActiveBindingIndex)
+                if (!entry.HasCompleted)
                 {
-                    ActivateFirstBinding();
+                    Bindings.Remove(node);
+
+                    entry.Dispose();
+
+                    if (entry.Index >= ActiveBindingIndex)
+                    {
+                        ActivateFirstBinding();
+                    }
                 }
             });
         }
@@ -131,7 +138,7 @@ namespace Avalonia
                 {
                     Value = entry.Value;
                     ActiveBindingIndex = entry.Index;
-                    _owner.LevelValueChanged(this);
+                    Owner.LevelValueChanged(this);
                 }
                 else
                 {
@@ -159,21 +166,10 @@ namespace Avalonia
         /// </summary>
         /// <param name="entry">The entry that completed.</param>
         /// <param name="error">The error.</param>
-        public void Error(PriorityBindingEntry entry, BindingError error)
+        public void Error(PriorityBindingEntry entry, BindingNotification error)
         {
-            _owner.LevelError(this, error);
+            Owner.LevelError(this, error);
         }
-
-        /// <summary>
-        /// Invoked when an entry in <see cref="Bindings"/> reports validation status.
-        /// </summary>
-        /// <param name="entry">The entry that completed.</param>
-        /// <param name="validationStatus">The validation status.</param>
-        public void Validation(PriorityBindingEntry entry, IValidationStatus validationStatus)
-        {
-            _owner.LevelValidation(this, validationStatus);
-        }
-
 
         /// <summary>
         /// Activates the first binding that has a value.
@@ -186,14 +182,14 @@ namespace Avalonia
                 {
                     Value = binding.Value;
                     ActiveBindingIndex = binding.Index;
-                    _owner.LevelValueChanged(this);
+                    Owner.LevelValueChanged(this);
                     return;
                 }
             }
 
             Value = DirectValue;
             ActiveBindingIndex = -1;
-            _owner.LevelValueChanged(this);
+            Owner.LevelValueChanged(this);
         }
     }
 }

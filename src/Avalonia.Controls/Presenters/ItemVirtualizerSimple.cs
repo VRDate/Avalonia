@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Specialized;
 using System.Linq;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Utils;
 using Avalonia.Input;
 using Avalonia.Layout;
@@ -75,9 +76,23 @@ namespace Avalonia.Controls.Presenters
                         var firstIndex = ItemCount - panel.Children.Count;
                         RecycleContainersForMove(firstIndex - FirstIndex);
 
-                        panel.PixelOffset = VirtualizingPanel.ScrollDirection == Orientation.Vertical ?
-                            panel.Children[0].Bounds.Height :
-                            panel.Children[0].Bounds.Width;
+                        double pixelOffset;
+                        var child = panel.Children[0];
+
+                        if (child.IsArrangeValid)
+                        {
+                            pixelOffset = VirtualizingPanel.ScrollDirection == Orientation.Vertical ?
+                                                    child.Bounds.Height :
+                                                    child.Bounds.Width;
+                        }
+                        else
+                        {
+                            pixelOffset = VirtualizingPanel.ScrollDirection == Orientation.Vertical ?
+                                                    child.DesiredSize.Height :
+                                                    child.DesiredSize.Width;
+                        }
+
+                        panel.PixelOffset = pixelOffset;
                     }
                 }
             }
@@ -92,6 +107,53 @@ namespace Avalonia.Controls.Presenters
                 var overflow = VirtualizingPanel.PixelOverflow > 0 ? 1 : 0;
                 return VirtualizingPanel.Children.Count - overflow;
             }
+        }
+
+        /// <inheritdoc/>
+        public override Size MeasureOverride(Size availableSize)
+        {
+            var scrollable = (ILogicalScrollable)Owner;
+            var visualRoot = Owner.GetVisualRoot();
+            var maxAvailableSize = (visualRoot as WindowBase)?.PlatformImpl?.MaxClientSize
+                 ?? (visualRoot as TopLevel)?.ClientSize;
+
+            // If infinity is passed as the available size and we're virtualized then we need to
+            // fill the available space, but to do that we *don't* want to materialize all our
+            // items! Take a look at the root of the tree for a MaxClientSize and use that as
+            // the available size.
+            if (VirtualizingPanel.ScrollDirection == Orientation.Vertical)
+            {
+                if (availableSize.Height == double.PositiveInfinity)
+                {
+                    if (maxAvailableSize.HasValue)
+                    {
+                        availableSize = availableSize.WithHeight(maxAvailableSize.Value.Height);
+                    }
+                }
+
+                if (scrollable.CanHorizontallyScroll)
+                {
+                    availableSize = availableSize.WithWidth(double.PositiveInfinity);
+                }
+            }
+            else
+            {
+                if (availableSize.Width == double.PositiveInfinity)
+                {
+                    if (maxAvailableSize.HasValue)
+                    {
+                        availableSize = availableSize.WithWidth(maxAvailableSize.Value.Width);
+                    }
+                }
+
+                if (scrollable.CanVerticallyScroll)
+                {
+                    availableSize = availableSize.WithHeight(double.PositiveInfinity);
+                }
+            }
+
+            Owner.Panel.Measure(availableSize);
+            return Owner.Panel.DesiredSize;
         }
 
         /// <inheritdoc/>
@@ -115,21 +177,22 @@ namespace Avalonia.Controls.Presenters
                     case NotifyCollectionChangedAction.Add:
                         CreateAndRemoveContainers();
 
-                        if (e.NewStartingIndex >= FirstIndex &&
-                            e.NewStartingIndex + e.NewItems.Count <= NextIndex)
+                        if (e.NewStartingIndex < NextIndex)
                         {
                             RecycleContainers();
                         }
 
+                        panel.ForceInvalidateMeasure();
                         break;
 
                     case NotifyCollectionChangedAction.Remove:
                         if (e.OldStartingIndex >= FirstIndex &&
-                            e.OldStartingIndex + e.OldItems.Count <= NextIndex)
+                            e.OldStartingIndex < NextIndex)
                         {
                             RecycleContainersOnRemove();
                         }
 
+                        panel.ForceInvalidateMeasure();
                         break;
 
                     case NotifyCollectionChangedAction.Move:
@@ -140,6 +203,7 @@ namespace Avalonia.Controls.Presenters
                     case NotifyCollectionChangedAction.Reset:
                         RecycleContainersOnRemove();
                         CreateAndRemoveContainers();
+                        panel.ForceInvalidateMeasure();
                         break;
                 }
             }
@@ -252,7 +316,7 @@ namespace Avalonia.Controls.Presenters
                 var index = NextIndex;
                 var step = 1;
 
-                while (!panel.IsFull)
+                while (!panel.IsFull && index >= 0)
                 {
                     if (index >= ItemCount)
                     {
@@ -340,7 +404,7 @@ namespace Avalonia.Controls.Presenters
         /// <param name="delta">The delta of the move.</param>
         /// <remarks>
         /// If the move is less than a page, then this method moves the containers for the items
-        /// that are still visible to the correct place, and recyles and moves the others. For
+        /// that are still visible to the correct place, and recycles and moves the others. For
         /// example: if there are 20 items and 10 containers visible and the user scrolls 5
         /// items down, then the bottom 5 containers will be moved to the top and the top 5 will
         /// be moved to the bottom and recycled to display the newly visible item. Updates 
@@ -352,11 +416,14 @@ namespace Avalonia.Controls.Presenters
             var panel = VirtualizingPanel;
             var generator = Owner.ItemContainerGenerator;
             var selector = Owner.MemberSelector;
+
+            //validate delta it should never overflow last index or generate index < 0 
+            delta = MathUtilities.Clamp(delta, -FirstIndex, ItemCount - FirstIndex - panel.Children.Count);
+
             var sign = delta < 0 ? -1 : 1;
             var count = Math.Min(Math.Abs(delta), panel.Children.Count);
             var move = count < panel.Children.Count;
             var first = delta < 0 && move ? panel.Children.Count + delta : 0;
-            var containers = panel.Children.GetRange(first, count).ToList();
 
             for (var i = 0; i < count; ++i)
             {
@@ -450,17 +517,13 @@ namespace Avalonia.Controls.Presenters
 
             if (index >= 0 && index < ItemCount)
             {
-                if (index < FirstIndex)
+                if (index <= FirstIndex)
                 {
                     newOffset = index;
                 }
                 else if (index >= NextIndex)
                 {
                     newOffset = index - Math.Ceiling(ViewportValue - 1);
-                }
-                else if (OffsetValue + ViewportValue >= ItemCount)
-                {
-                    newOffset = OffsetValue - 1;
                 }
 
                 if (newOffset != -1)
@@ -469,19 +532,34 @@ namespace Avalonia.Controls.Presenters
                 }
 
                 var container = generator.ContainerFromIndex(index);
-                var layoutManager = LayoutManager.Instance;
+                var layoutManager = (Owner.GetVisualRoot() as ILayoutRoot)?.LayoutManager;
 
                 // We need to do a layout here because it's possible that the container we moved to
                 // is only partially visible due to differing item sizes. If the container is only 
                 // partially visible, scroll again. Don't do this if there's no layout manager:
                 // it means we're running a unit test.
-                if (layoutManager != null)
+                if (container != null && layoutManager != null)
                 {
                     layoutManager.ExecuteLayoutPass();
 
-                    if (!new Rect(panel.Bounds.Size).Contains(container.Bounds))
+                    if (newOffset != -1 && newOffset != OffsetValue)
                     {
-                        OffsetValue += 1;
+                        OffsetValue = newOffset;
+                    }
+
+                    if (panel.ScrollDirection == Orientation.Vertical)
+                    {
+                        if (container.Bounds.Y < panel.Bounds.Y || container.Bounds.Bottom > panel.Bounds.Bottom)
+                        {
+                            OffsetValue += 1;
+                        }
+                    }
+                    else
+                    {
+                        if (container.Bounds.X < panel.Bounds.X || container.Bounds.Right > panel.Bounds.Right)
+                        {
+                            OffsetValue += 1;
+                        }
                     }
                 }
 

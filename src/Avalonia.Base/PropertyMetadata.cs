@@ -1,7 +1,6 @@
 // Copyright (c) The Avalonia Project. All rights reserved.
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
-using System;
 using Avalonia.Data;
 
 namespace Avalonia
@@ -17,7 +16,8 @@ namespace Avalonia
         /// Initializes a new instance of the <see cref="PropertyMetadata"/> class.
         /// </summary>
         /// <param name="defaultBindingMode">The default binding mode.</param>
-        public PropertyMetadata(BindingMode defaultBindingMode = BindingMode.Default)
+        public PropertyMetadata(
+            BindingMode defaultBindingMode = BindingMode.Default)
         {
             _defaultBindingMode = defaultBindingMode;
         }

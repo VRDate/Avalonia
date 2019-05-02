@@ -3,7 +3,8 @@
 
 using System;
 using System.Reactive.Disposables;
-using System.Reactive.Subjects;
+using System.Reflection;
+using Avalonia.Animation;
 using Avalonia.Controls;
 using Avalonia.Data;
 using Avalonia.Metadata;
@@ -18,7 +19,7 @@ namespace Avalonia.Styling
     /// A <see cref="Setter"/> is used to set a <see cref="AvaloniaProperty"/> value on a
     /// <see cref="AvaloniaObject"/> depending on a condition.
     /// </remarks>
-    public class Setter : ISetter
+    public class Setter : ISetter, IAnimationSetter
     {
         private object _value;
 
@@ -64,13 +65,7 @@ namespace Avalonia.Styling
 
             set
             {
-                if (value is IStyleable)
-                {
-                    throw new ArgumentException(
-                        "Cannot assign a control to Style.Value. Wrap the control in a <Template>.",
-                        "value");
-                }
-
+                (value as ISetterValue)?.Initialize(this);
                 _value = value;
             }
         }
@@ -98,11 +93,13 @@ namespace Avalonia.Styling
             if (binding == null)
             {
                 var template = value as ITemplate;
+                bool isPropertyOfTypeITemplate = typeof(ITemplate).GetTypeInfo()
+                    .IsAssignableFrom(Property.PropertyType.GetTypeInfo());
 
-                if (template != null)
+                if (template != null && !isPropertyOfTypeITemplate)
                 {
                     var materialized = template.Build();
-                    NameScope.SetNameScope((Visual)materialized, new NameScope());
+                    NameScope.SetNameScope((StyledElement)materialized, new NameScope());
                     value = materialized;
                 }
 
@@ -122,7 +119,7 @@ namespace Avalonia.Styling
 
                 if (source != null)
                 {
-                    var cloned = Clone(source, style, activator);
+                    var cloned = Clone(source, source.Mode == BindingMode.Default ? Property.GetMetadata(control.GetType()).DefaultBindingMode : source.Mode, style, activator);
                     return BindingOperations.Apply(control, Property, cloned, null);
                 }
             }
@@ -130,47 +127,42 @@ namespace Avalonia.Styling
             return Disposable.Empty;
         }
 
-        private InstancedBinding Clone(InstancedBinding sourceInstance, IStyle style, IObservable<bool> activator)
+        private InstancedBinding Clone(InstancedBinding sourceInstance, BindingMode mode, IStyle style, IObservable<bool> activator)
         {
-            InstancedBinding cloned;
-
             if (activator != null)
             {
                 var description = style?.ToString();
 
-                if (sourceInstance.Subject != null)
+                switch (mode)
                 {
-                    var activated = new ActivatedSubject(activator, sourceInstance.Subject, description);
-                    cloned = new InstancedBinding(activated, sourceInstance.Mode, BindingPriority.StyleTrigger);
+                    case BindingMode.OneTime:
+                        if (sourceInstance.Observable != null)
+                        {
+                            var activated = new ActivatedObservable(activator, sourceInstance.Observable, description);
+                            return InstancedBinding.OneTime(activated, BindingPriority.StyleTrigger);
+                        }
+                        else
+                        {
+                            var activated = new ActivatedValue(activator, sourceInstance.Value, description);
+                            return InstancedBinding.OneTime(activated, BindingPriority.StyleTrigger);
+                        }
+                    case BindingMode.OneWay:
+                        {
+                            var activated = new ActivatedObservable(activator, sourceInstance.Observable, description);
+                            return InstancedBinding.OneWay(activated, BindingPriority.StyleTrigger);
+                        }
+                    default:
+                        {
+                            var activated = new ActivatedSubject(activator, sourceInstance.Subject, description);
+                            return new InstancedBinding(activated, sourceInstance.Mode, BindingPriority.StyleTrigger);
+                        }
                 }
-                else if (sourceInstance.Observable != null)
-                {
-                    var activated = new ActivatedObservable(activator, sourceInstance.Observable, description);
-                    cloned = new InstancedBinding(activated, sourceInstance.Mode, BindingPriority.StyleTrigger);
-                }
-                else
-                {
-                    var activated = new ActivatedValue(activator, sourceInstance.Value, description);
-                    cloned = new InstancedBinding(activated, BindingMode.OneWay, BindingPriority.StyleTrigger);
-                }
+
             }
             else
             {
-                if (sourceInstance.Subject != null)
-                {
-                    cloned = new InstancedBinding(sourceInstance.Subject, sourceInstance.Mode, BindingPriority.Style);
-                }
-                else if (sourceInstance.Observable != null)
-                {
-                    cloned = new InstancedBinding(sourceInstance.Observable, sourceInstance.Mode, BindingPriority.Style);
-                }
-                else
-                {
-                    cloned = new InstancedBinding(sourceInstance.Value, BindingPriority.Style);
-                }
+                return sourceInstance.WithPriority(BindingPriority.Style);
             }
-
-            return cloned;
         }
     }
 }

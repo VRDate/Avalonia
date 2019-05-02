@@ -2,6 +2,7 @@
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
 using System;
+using Avalonia.Data;
 using Avalonia.Utilities;
 
 namespace Avalonia.Controls.Primitives
@@ -36,7 +37,20 @@ namespace Avalonia.Controls.Primitives
             AvaloniaProperty.RegisterDirect<RangeBase, double>(
                 nameof(Value),
                 o => o.Value,
-                (o, v) => o.Value = v);
+                (o, v) => o.Value = v,
+                defaultBindingMode: BindingMode.TwoWay);
+
+        /// <summary>
+        /// Defines the <see cref="SmallChange"/> property.
+        /// </summary>
+        public static readonly StyledProperty<double> SmallChangeProperty =
+            AvaloniaProperty.Register<RangeBase, double>(nameof(SmallChange), 0.1);
+
+        /// <summary>
+        /// Defines the <see cref="LargeChange"/> property.
+        /// </summary>
+        public static readonly StyledProperty<double> LargeChangeProperty =
+            AvaloniaProperty.Register<RangeBase, double>(nameof(LargeChange), 1);
 
         private double _minimum;
         private double _maximum = 100.0;
@@ -103,8 +117,20 @@ namespace Avalonia.Controls.Primitives
             }
         }
 
+        public double SmallChange
+        {
+            get => GetValue(SmallChangeProperty);
+            set => SetValue(SmallChangeProperty, value);
+        }
+
+        public double LargeChange
+        {
+            get => GetValue(LargeChangeProperty);
+            set => SetValue(LargeChangeProperty, value);
+        }
+
         /// <summary>
-        /// Throws an exception if the double valus is NaN or Inf.
+        /// Throws an exception if the double value is NaN or Inf.
         /// </summary>
         /// <param name="value">The value.</param>
         /// <param name="property">The name of the property being set.</param>

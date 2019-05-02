@@ -2,8 +2,6 @@
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
 using System;
-using System.Collections.Generic;
-using System.Linq;
 using Avalonia.Logging;
 using Avalonia.Threading;
 
@@ -14,15 +12,10 @@ namespace Avalonia.Layout
     /// </summary>
     public class LayoutManager : ILayoutManager
     {
-        private readonly HashSet<ILayoutable> _toMeasure = new HashSet<ILayoutable>();
-        private readonly HashSet<ILayoutable> _toArrange = new HashSet<ILayoutable>();
+        private readonly LayoutQueue<ILayoutable> _toMeasure = new LayoutQueue<ILayoutable>(v => !v.IsMeasureValid);
+        private readonly LayoutQueue<ILayoutable> _toArrange = new LayoutQueue<ILayoutable>(v => !v.IsArrangeValid);
         private bool _queued;
         private bool _running;
-
-        /// <summary>
-        /// Gets the layout manager.
-        /// </summary>
-        public static ILayoutManager Instance => AvaloniaLocator.Current.GetService<ILayoutManager>();
 
         /// <inheritdoc/>
         public void InvalidateMeasure(ILayoutable control)
@@ -30,8 +23,18 @@ namespace Avalonia.Layout
             Contract.Requires<ArgumentNullException>(control != null);
             Dispatcher.UIThread.VerifyAccess();
 
-            _toMeasure.Add(control);
-            _toArrange.Add(control);
+            if (!control.IsAttachedToVisualTree)
+            {
+#if DEBUG
+                throw new AvaloniaInternalException(
+                    "LayoutManager.InvalidateMeasure called on a control that is detached from the visual tree.");
+#else
+                return;
+#endif
+            }
+
+            _toMeasure.Enqueue(control);
+            _toArrange.Enqueue(control);
             QueueLayoutPass();
         }
 
@@ -41,7 +44,17 @@ namespace Avalonia.Layout
             Contract.Requires<ArgumentNullException>(control != null);
             Dispatcher.UIThread.VerifyAccess();
 
-            _toArrange.Add(control);
+            if (!control.IsAttachedToVisualTree)
+            {
+#if DEBUG
+                throw new AvaloniaInternalException(
+                    "LayoutManager.InvalidateArrange called on a control that is detached from the visual tree.");
+#else
+                return;
+#endif
+            }
+
+            _toArrange.Enqueue(control);
             QueueLayoutPass();
         }
 
@@ -66,6 +79,9 @@ namespace Avalonia.Layout
                 var stopwatch = new System.Diagnostics.Stopwatch();
                 stopwatch.Start();
 
+                _toMeasure.BeginLoop(MaxPasses);
+                _toArrange.BeginLoop(MaxPasses);
+
                 try
                 {
                     for (var pass = 0; pass < MaxPasses; ++pass)
@@ -84,8 +100,11 @@ namespace Avalonia.Layout
                     _running = false;
                 }
 
+                _toMeasure.EndLoop();
+                _toArrange.EndLoop();
+
                 stopwatch.Stop();
-                Logger.Information(LogArea.Layout, this, "Layout pass finised in {Time}", stopwatch.Elapsed);
+                Logger.Information(LogArea.Layout, this, "Layout pass finished in {Time}", stopwatch.Elapsed);
             }
 
             _queued = false;
@@ -98,7 +117,7 @@ namespace Avalonia.Layout
             Arrange(root);
 
             // Running the initial layout pass may have caused some control to be invalidated
-            // so run a full layout pass now (this usually due to scrollbars; its not known 
+            // so run a full layout pass now (this usually due to scrollbars; its not known
             // whether they will need to be shown until the layout pass has run and if the
             // first guess was incorrect the layout will need to be updated).
             ExecuteLayoutPass();
@@ -108,69 +127,82 @@ namespace Avalonia.Layout
         {
             while (_toMeasure.Count > 0)
             {
-                var next = _toMeasure.First();
-                Measure(next);
+                var control = _toMeasure.Dequeue();
+
+                if (!control.IsMeasureValid && control.IsAttachedToVisualTree)
+                {
+                    Measure(control);
+                }
             }
         }
 
         private void ExecuteArrangePass()
         {
-            while (_toArrange.Count > 0 && _toMeasure.Count == 0)
+            while (_toArrange.Count > 0)
             {
-                var next = _toArrange.First();
-                Arrange(next);
+                var control = _toArrange.Dequeue();
+
+                if (!control.IsArrangeValid && control.IsAttachedToVisualTree)
+                {
+                    Arrange(control);
+                }
             }
         }
 
         private void Measure(ILayoutable control)
         {
-            var root = control as ILayoutRoot;
-            var parent = control.VisualParent as ILayoutable;
-
-            if (root != null)
-            {
-                root.Measure(root.MaxClientSize);
-            }
-            else if (parent != null)
+            // Controls closest to the visual root need to be arranged first. We don't try to store
+            // ordered invalidation lists, instead we traverse the tree upwards, measuring the
+            // controls closest to the root first. This has been shown by benchmarks to be the
+            // fastest and most memory-efficient algorithm.
+            if (control.VisualParent is ILayoutable parent)
             {
                 Measure(parent);
             }
 
-            if (!control.IsMeasureValid)
+            // If the control being measured has IsMeasureValid == true here then its measure was
+            // handed by an ancestor and can be ignored. The measure may have also caused the
+            // control to be removed.
+            if (!control.IsMeasureValid && control.IsAttachedToVisualTree)
             {
-                control.Measure(control.PreviousMeasure.Value);
+                if (control is ILayoutRoot root)
+                {
+                    root.Measure(Size.Infinity);
+                }
+                else if (control.PreviousMeasure.HasValue)
+                {
+                    control.Measure(control.PreviousMeasure.Value);
+                }
             }
-
-            _toMeasure.Remove(control);
         }
 
         private void Arrange(ILayoutable control)
         {
-            var root = control as ILayoutRoot;
-            var parent = control.VisualParent as ILayoutable;
-
-            if (root != null)
-            {
-                root.Arrange(new Rect(root.DesiredSize));
-            }
-            else if (parent != null)
+            if (control.VisualParent is ILayoutable parent)
             {
                 Arrange(parent);
             }
 
-            if (control.PreviousArrange.HasValue)
+            if (!control.IsArrangeValid && control.IsAttachedToVisualTree)
             {
-                control.Arrange(control.PreviousArrange.Value);
+                if (control is IEmbeddedLayoutRoot embeddedRoot)
+                    control.Arrange(new Rect(embeddedRoot.AllocatedSize));
+                else if (control is ILayoutRoot root)
+                    control.Arrange(new Rect(root.DesiredSize));
+                else if (control.PreviousArrange != null)
+                {
+                    // Has been observed that PreviousArrange sometimes is null, probably a bug somewhere else.
+                    // Condition observed: control.VisualParent is Scrollbar, control is Border.
+                    control.Arrange(control.PreviousArrange.Value);
+                }
             }
-
-            _toArrange.Remove(control);
         }
 
         private void QueueLayoutPass()
         {
-            if (!_queued)
+            if (!_queued && !_running)
             {
-                Dispatcher.UIThread.InvokeAsync(ExecuteLayoutPass, DispatcherPriority.Render);
+                Dispatcher.UIThread.Post(ExecuteLayoutPass, DispatcherPriority.Layout);
                 _queued = true;
             }
         }

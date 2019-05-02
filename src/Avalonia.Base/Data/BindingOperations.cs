@@ -20,7 +20,7 @@ namespace Avalonia.Data
         /// An optional anchor from which to locate required context. When binding to objects that
         /// are not in the logical tree, certain types of binding need an anchor into the tree in 
         /// order to locate named controls or resources. The <paramref name="anchor"/> parameter 
-        /// can be used to provice this context.
+        /// can be used to provide this context.
         /// </param>
         /// <returns>An <see cref="IDisposable"/> which can be used to cancel the binding.</returns>
         public static IDisposable Apply(
@@ -54,7 +54,10 @@ namespace Avalonia.Data
 
                     if (source != null)
                     {
-                        return source.Take(1).Subscribe(x => target.SetValue(property, x, binding.Priority));
+                        return source
+                            .Where(x => BindingNotification.ExtractValue(x) != AvaloniaProperty.UnsetValue)
+                            .Take(1)
+                            .Subscribe(x => target.SetValue(property, x, binding.Priority));
                     }
                     else
                     {
@@ -62,7 +65,11 @@ namespace Avalonia.Data
                         return Disposable.Empty;
                     }
                 case BindingMode.OneWayToSource:
-                    return target.GetObservable(property).Subscribe(binding.Subject);
+                    return Observable.CombineLatest(
+                        binding.Observable,
+                        target.GetObservable(property),
+                        (_, v) => v)
+                    .Subscribe(x => binding.Subject.OnNext(x));
                 default:
                     throw new ArgumentException("Invalid binding mode.");
             }

@@ -1,14 +1,13 @@
 // Copyright (c) The Avalonia Project. All rights reserved.
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Xunit;
 
-#if AVALONIA_CAIRO
-namespace Avalonia.Cairo.RenderTests.Controls
-#elif AVALONIA_SKIA
+#if AVALONIA_SKIA
 namespace Avalonia.Skia.RenderTests
 #else
 namespace Avalonia.Direct2D1.RenderTests.Controls
@@ -21,8 +20,8 @@ namespace Avalonia.Direct2D1.RenderTests.Controls
         {
         }
 
-        [Fact]
-        public void Wrapping_NoWrap()
+        [Win32Fact("Has text")]
+        public async Task Wrapping_NoWrap()
         {
             Decorator target = new Decorator
             {
@@ -31,6 +30,7 @@ namespace Avalonia.Direct2D1.RenderTests.Controls
                 Height = 200,
                 Child = new TextBlock
                 {
+                    FontFamily = new FontFamily("Courier New"),
                     Background = Brushes.Red,
                     FontSize = 12,
                     Foreground = Brushes.Black,
@@ -40,7 +40,7 @@ namespace Avalonia.Direct2D1.RenderTests.Controls
                 }
             };
 
-            RenderToFile(target);
+            await RenderToFile(target);
             CompareImages();
         }
     }

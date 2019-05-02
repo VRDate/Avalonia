@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia.Platform;
 
@@ -14,8 +14,10 @@ namespace Avalonia.Threading
     /// </summary>
     internal class JobRunner
     {
-        private readonly IPlatformThreadingInterface _platform;
-        private readonly Queue<Job> _queue = new Queue<Job>();
+        private IPlatformThreadingInterface _platform;
+
+        private readonly Queue<IJob>[] _queues = Enumerable.Range(0, (int) DispatcherPriority.MaxValue + 1)
+            .Select(_ => new Queue<IJob>()).ToArray();
 
         public JobRunner(IPlatformThreadingInterface platform)
         {
@@ -25,35 +27,17 @@ namespace Avalonia.Threading
         /// <summary>
         /// Runs continuations pushed on the loop.
         /// </summary>
-        public void RunJobs()
+        /// <param name="priority">Priority to execute jobs for. Pass null if platform doesn't have internal priority system</param>
+        public void RunJobs(DispatcherPriority? priority)
         {
+            var minimumPriority = priority ?? DispatcherPriority.MinValue;
             while (true)
             {
-                Job job;
+                var job = GetNextJob(minimumPriority);
+                if (job == null)
+                    return;
 
-                lock (_queue)
-                {
-                    if (_queue.Count == 0)
-                        return;
-                    job = _queue.Dequeue();
-                }
-
-                if (job.TaskCompletionSource == null)
-                {
-                    job.Action();
-                }
-                else
-                {
-                    try
-                    {
-                        job.Action();
-                        job.TaskCompletionSource.SetResult(null);
-                    }
-                    catch (Exception e)
-                    {
-                        job.TaskCompletionSource.SetException(e);
-                    }
-                }
+                job.Run();
             }
         }
 
@@ -67,7 +51,20 @@ namespace Avalonia.Threading
         {
             var job = new Job(action, priority, false);
             AddJob(job);
-            return job.TaskCompletionSource.Task;
+            return job.Task;
+        }
+
+        /// <summary>
+        /// Invokes a method on the main loop.
+        /// </summary>
+        /// <param name="function">The method.</param>
+        /// <param name="priority">The priority with which to invoke the method.</param>
+        /// <returns>A task that can be used to track the method's execution.</returns>
+        public Task<TResult> InvokeAsync<TResult>(Func<TResult> function, DispatcherPriority priority)
+        {
+            var job = new Job<TResult>(function, priority);
+            AddJob(job);
+            return job.Task;
         }
 
         /// <summary>
@@ -78,54 +75,153 @@ namespace Avalonia.Threading
         /// <param name="priority">The priority with which to invoke the method.</param>
         internal void Post(Action action, DispatcherPriority priority)
         {
-            // TODO: Respect priority.
             AddJob(new Job(action, priority, true));
         }
 
-        private void AddJob(Job job)
+        /// <summary>
+        /// Allows unit tests to change the platform threading interface.
+        /// </summary>
+        internal void UpdateServices()
         {
-            var needWake = false;
-            lock (_queue)
+            _platform = AvaloniaLocator.Current.GetService<IPlatformThreadingInterface>();
+        }
+
+        private void AddJob(IJob job)
+        {
+            bool needWake;
+            var queue = _queues[(int) job.Priority];
+            lock (queue)
             {
-                needWake = _queue.Count == 0;
-                _queue.Enqueue(job);
+                needWake = queue.Count == 0;
+                queue.Enqueue(job);
             }
             if (needWake)
-                _platform.Signal();
+                _platform?.Signal(job.Priority);
+        }
+
+        private IJob GetNextJob(DispatcherPriority minimumPriority)
+        {
+            for (int c = (int) DispatcherPriority.MaxValue; c >= (int) minimumPriority; c--)
+            {
+                var q = _queues[c];
+                lock (q)
+                {
+                    if (q.Count > 0)
+                        return q.Dequeue();
+                }
+            }
+            return null;
+        }
+        
+        private interface IJob
+        {
+            /// <summary>
+            /// Gets the job priority.
+            /// </summary>
+            DispatcherPriority Priority { get; }
+            
+            /// <summary>
+            /// Runs the job.
+            /// </summary>
+            void Run();
         }
 
         /// <summary>
         /// A job to run.
         /// </summary>
-        private class Job
+        private sealed class Job : IJob
         {
+            /// <summary>
+            /// The method to call.
+            /// </summary>
+            private readonly Action _action;
+            /// <summary>
+            /// The task completion source.
+            /// </summary>
+            private readonly TaskCompletionSource<object> _taskCompletionSource;
+
             /// <summary>
             /// Initializes a new instance of the <see cref="Job"/> class.
             /// </summary>
             /// <param name="action">The method to call.</param>
             /// <param name="priority">The job priority.</param>
-            /// <param name="throwOnUiThread">Do not wrap excepption in TaskCompletionSource</param>
+            /// <param name="throwOnUiThread">Do not wrap exception in TaskCompletionSource</param>
             public Job(Action action, DispatcherPriority priority, bool throwOnUiThread)
             {
-                Action = action;
+                _action = action;
                 Priority = priority;
-                TaskCompletionSource = throwOnUiThread ? null : new TaskCompletionSource<object>();
+                _taskCompletionSource = throwOnUiThread ? null : new TaskCompletionSource<object>();
             }
 
-            /// <summary>
-            /// Gets the method to call.
-            /// </summary>
-            public Action Action { get; }
-
-            /// <summary>
-            /// Gets the job priority.
-            /// </summary>
+            /// <inheritdoc/>
             public DispatcherPriority Priority { get; }
 
             /// <summary>
-            /// Gets the task completion source.
+            /// The task.
             /// </summary>
-            public TaskCompletionSource<object> TaskCompletionSource { get; }
+            public Task Task => _taskCompletionSource?.Task;
+            
+            /// <inheritdoc/>
+            void IJob.Run()
+            {
+                if (_taskCompletionSource == null)
+                {
+                    _action();
+                    return;
+                }
+                try
+                {
+                    _action();
+                    _taskCompletionSource.SetResult(null);
+                }
+                catch (Exception e)
+                {
+                    _taskCompletionSource.SetException(e);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// A job to run.
+        /// </summary>
+        private sealed class Job<TResult> : IJob
+        {
+            private readonly Func<TResult> _function;
+            private readonly TaskCompletionSource<TResult> _taskCompletionSource;
+
+            /// <summary>
+            /// Initializes a new instance of the <see cref="Job"/> class.
+            /// </summary>
+            /// <param name="function">The method to call.</param>
+            /// <param name="priority">The job priority.</param>
+            public Job(Func<TResult> function, DispatcherPriority priority)
+            {
+                _function = function;
+                Priority = priority;
+                _taskCompletionSource = new TaskCompletionSource<TResult>();
+            }
+
+            /// <inheritdoc/>
+            public DispatcherPriority Priority { get; }
+            
+            /// <summary>
+            /// The task.
+            /// </summary>
+            public Task<TResult> Task => _taskCompletionSource.Task;
+
+            /// <inheritdoc/>
+            void IJob.Run()
+            {
+                try
+                {
+                    var result = _function();
+                    _taskCompletionSource.SetResult(result);
+                }
+                catch (Exception e)
+                {
+                    _taskCompletionSource.SetException(e);
+                }
+            }
         }
     }
 }

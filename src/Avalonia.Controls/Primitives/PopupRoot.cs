@@ -5,17 +5,18 @@ using System;
 using Avalonia.Controls.Platform;
 using Avalonia.Controls.Presenters;
 using Avalonia.Interactivity;
-using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform;
+using Avalonia.Styling;
 using Avalonia.VisualTree;
+using JetBrains.Annotations;
 
 namespace Avalonia.Controls.Primitives
 {
     /// <summary>
     /// The root window of a <see cref="Popup"/>.
     /// </summary>
-    public class PopupRoot : TopLevel, IInteractive, IHostedVisualTreeRoot, IDisposable
+    public class PopupRoot : WindowBase, IInteractive, IHostedVisualTreeRoot, IDisposable, IStyleHost
     {
         private IDisposable _presenterSubscription;
 
@@ -49,6 +50,7 @@ namespace Avalonia.Controls.Primitives
         /// <summary>
         /// Gets the platform-specific window implementation.
         /// </summary>
+        [CanBeNull]
         public new IPopupImpl PlatformImpl => (IPopupImpl)base.PlatformImpl;
 
         /// <summary>
@@ -64,30 +66,39 @@ namespace Avalonia.Controls.Primitives
         /// </summary>
         IVisual IHostedVisualTreeRoot.Host => Parent;
 
+        /// <summary>
+        /// Gets the styling parent of the popup root.
+        /// </summary>
+        IStyleHost IStyleHost.StylingParent => Parent;
+
         /// <inheritdoc/>
-        public void Dispose()
-        {
-            this.PlatformImpl.Dispose();
-        }
+        public void Dispose() => PlatformImpl?.Dispose();
 
         /// <summary>
-        /// Hides the popup.
+        /// Moves the Popups position so that it doesnt overlap screen edges.
+        /// This method can be called immediately after Show has been called.
         /// </summary>
-        public void Hide()
+        public void SnapInsideScreenEdges()
         {
-            PlatformImpl.Hide();
-            IsVisible = false;
-        }
+            var screen = Application.Current.MainWindow?.Screens.ScreenFromPoint(Position);
 
-        /// <summary>
-        /// Shows the popup.
-        /// </summary>
-        public void Show()
-        {
-            EnsureInitialized();
-            PlatformImpl.Show();
-            LayoutManager.Instance.ExecuteInitialLayoutPass(this);
-            IsVisible = true;
+            if (screen != null)
+            {
+                var scaling = VisualRoot.RenderScaling;
+                var bounds = PixelRect.FromRect(Bounds, scaling);
+                var screenX = Position.X + bounds.Width - screen.Bounds.X;
+                var screenY = Position.Y + bounds.Height - screen.Bounds.Y;
+
+                if (screenX > screen.Bounds.Width)
+                {
+                    Position = Position.WithX(Position.X - (screenX - screen.Bounds.Width));
+                }
+
+                if (screenY > screen.Bounds.Height)
+                {
+                    Position = Position.WithY(Position.Y - (screenY - screen.Bounds.Height));
+                }
+            }
         }
 
         /// <inheritdoc/>
@@ -95,7 +106,7 @@ namespace Avalonia.Controls.Primitives
         {
             base.OnTemplateApplied(e);
 
-            if (Parent.TemplatedParent != null)
+            if (Parent?.TemplatedParent != null)
             {
                 if (_presenterSubscription != null)
                 {
@@ -109,32 +120,25 @@ namespace Avalonia.Controls.Primitives
             }
         }
 
-        private void EnsureInitialized()
-        {
-            if (!this.IsInitialized)
-            {
-                var init = (ISupportInitialize)this;
-                init.BeginInit();
-                init.EndInit();
-            }
-        }
-
         private void SetTemplatedParentAndApplyChildTemplates(IControl control)
         {
-            var templatedParent = Parent.TemplatedParent;
-
-            if (control.TemplatedParent == null)
+            if (control != null)
             {
-                control.SetValue(TemplatedParentProperty, templatedParent);
-            }
+                var templatedParent = Parent.TemplatedParent;
 
-            control.ApplyTemplate();
-
-            if (!(control is IPresenter && control.TemplatedParent == templatedParent))
-            {
-                foreach (IControl child in control.GetVisualChildren())
+                if (control.TemplatedParent == null)
                 {
-                    SetTemplatedParentAndApplyChildTemplates(child);
+                    control.SetValue(TemplatedParentProperty, templatedParent);
+                }
+
+                control.ApplyTemplate();
+
+                if (!(control is IPresenter) && control.TemplatedParent == templatedParent)
+                {
+                    foreach (IControl child in control.GetVisualChildren())
+                    {
+                        SetTemplatedParentAndApplyChildTemplates(child);
+                    }
                 }
             }
         }

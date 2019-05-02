@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Avalonia.Interactivity;
-using Avalonia.Rendering;
 using Avalonia.VisualTree;
 
 namespace Avalonia.Input
@@ -31,43 +30,43 @@ namespace Avalonia.Input
         /// Defines the <see cref="IsEnabledCore"/> property.
         /// </summary>
         public static readonly StyledProperty<bool> IsEnabledCoreProperty =
-            AvaloniaProperty.Register<InputElement, bool>("IsEnabledCore", true);
+            AvaloniaProperty.Register<InputElement, bool>(nameof(IsEnabledCore), true);
 
         /// <summary>
         /// Gets or sets associated mouse cursor.
         /// </summary>
         public static readonly StyledProperty<Cursor> CursorProperty =
-            AvaloniaProperty.Register<InputElement, Cursor>("Cursor", null, true);
+            AvaloniaProperty.Register<InputElement, Cursor>(nameof(Cursor), null, true);
 
         /// <summary>
         /// Defines the <see cref="IsFocused"/> property.
         /// </summary>
         public static readonly DirectProperty<InputElement, bool> IsFocusedProperty =
-            AvaloniaProperty.RegisterDirect<InputElement, bool>("IsFocused", o => o.IsFocused);
+            AvaloniaProperty.RegisterDirect<InputElement, bool>(nameof(IsFocused), o => o.IsFocused);
 
         /// <summary>
         /// Defines the <see cref="IsHitTestVisible"/> property.
         /// </summary>
         public static readonly StyledProperty<bool> IsHitTestVisibleProperty =
-            AvaloniaProperty.Register<InputElement, bool>("IsHitTestVisible", true);
+            AvaloniaProperty.Register<InputElement, bool>(nameof(IsHitTestVisible), true);
 
         /// <summary>
         /// Defines the <see cref="IsPointerOver"/> property.
         /// </summary>
         public static readonly DirectProperty<InputElement, bool> IsPointerOverProperty =
-            AvaloniaProperty.RegisterDirect<InputElement, bool>("IsPointerOver", o => o.IsPointerOver);
+            AvaloniaProperty.RegisterDirect<InputElement, bool>(nameof(IsPointerOver), o => o.IsPointerOver);
 
         /// <summary>
         /// Defines the <see cref="GotFocus"/> event.
         /// </summary>
         public static readonly RoutedEvent<GotFocusEventArgs> GotFocusEvent =
-            RoutedEvent.Register<InputElement, GotFocusEventArgs>("GotFocus", RoutingStrategies.Bubble);
+            RoutedEvent.Register<InputElement, GotFocusEventArgs>(nameof(GotFocus), RoutingStrategies.Bubble);
 
         /// <summary>
         /// Defines the <see cref="LostFocus"/> event.
         /// </summary>
         public static readonly RoutedEvent<RoutedEventArgs> LostFocusEvent =
-            RoutedEvent.Register<InputElement, RoutedEventArgs>("LostFocus", RoutingStrategies.Bubble);
+            RoutedEvent.Register<InputElement, RoutedEventArgs>(nameof(LostFocus), RoutingStrategies.Bubble);
 
         /// <summary>
         /// Defines the <see cref="KeyDown"/> event.
@@ -97,13 +96,13 @@ namespace Avalonia.Input
         /// Defines the <see cref="PointerEnter"/> event.
         /// </summary>
         public static readonly RoutedEvent<PointerEventArgs> PointerEnterEvent =
-            RoutedEvent.Register<InputElement, PointerEventArgs>("PointerEnter", RoutingStrategies.Direct);
+            RoutedEvent.Register<InputElement, PointerEventArgs>(nameof(PointerEnter), RoutingStrategies.Direct);
 
         /// <summary>
         /// Defines the <see cref="PointerLeave"/> event.
         /// </summary>
         public static readonly RoutedEvent<PointerEventArgs> PointerLeaveEvent =
-            RoutedEvent.Register<InputElement, PointerEventArgs>("PointerLeave", RoutingStrategies.Direct);
+            RoutedEvent.Register<InputElement, PointerEventArgs>(nameof(PointerLeave), RoutingStrategies.Direct);
 
         /// <summary>
         /// Defines the <see cref="PointerMoved"/> event.
@@ -162,18 +161,22 @@ namespace Avalonia.Input
             KeyDownEvent.AddClassHandler<InputElement>(x => x.OnKeyDown);
             KeyUpEvent.AddClassHandler<InputElement>(x => x.OnKeyUp);
             TextInputEvent.AddClassHandler<InputElement>(x => x.OnTextInput);
-            PointerEnterEvent.AddClassHandler<InputElement>(x => x.OnPointerEnter);
-            PointerLeaveEvent.AddClassHandler<InputElement>(x => x.OnPointerLeave);
+            PointerEnterEvent.AddClassHandler<InputElement>(x => x.OnPointerEnterCore);
+            PointerLeaveEvent.AddClassHandler<InputElement>(x => x.OnPointerLeaveCore);
             PointerMovedEvent.AddClassHandler<InputElement>(x => x.OnPointerMoved);
             PointerPressedEvent.AddClassHandler<InputElement>(x => x.OnPointerPressed);
             PointerReleasedEvent.AddClassHandler<InputElement>(x => x.OnPointerReleased);
             PointerWheelChangedEvent.AddClassHandler<InputElement>(x => x.OnPointerWheelChanged);
+
+            PseudoClass<InputElement, bool>(IsEnabledCoreProperty, x => !x, ":disabled");
+            PseudoClass<InputElement>(IsFocusedProperty, ":focus");
+            PseudoClass<InputElement>(IsPointerOverProperty, ":pointerover");
         }
 
         /// <summary>
         /// Occurs when the control receives focus.
         /// </summary>
-        public event EventHandler<RoutedEventArgs> GotFocus
+        public event EventHandler<GotFocusEventArgs> GotFocus
         {
             add { AddHandler(GotFocusEvent, value); }
             remove { RemoveHandler(GotFocusEvent, value); }
@@ -372,7 +375,7 @@ namespace Avalonia.Input
         /// </summary>
         public void Focus()
         {
-            FocusManager.Instance.Focus(this);
+            FocusManager.Instance?.Focus(this);
         }
 
         /// <inheritdoc/>
@@ -441,7 +444,6 @@ namespace Avalonia.Input
         /// <param name="e">The event args.</param>
         protected virtual void OnPointerEnter(PointerEventArgs e)
         {
-            IsPointerOver = true;
         }
 
         /// <summary>
@@ -450,7 +452,6 @@ namespace Avalonia.Input
         /// <param name="e">The event args.</param>
         protected virtual void OnPointerLeave(PointerEventArgs e)
         {
-            IsPointerOver = false;
         }
 
         /// <summary>
@@ -473,7 +474,7 @@ namespace Avalonia.Input
         /// Called before the <see cref="PointerReleased"/> event occurs.
         /// </summary>
         /// <param name="e">The event args.</param>
-        protected virtual void OnPointerReleased(PointerEventArgs e)
+        protected virtual void OnPointerReleased(PointerReleasedEventArgs e)
         {
         }
 
@@ -488,6 +489,26 @@ namespace Avalonia.Input
         private static void IsEnabledChanged(AvaloniaPropertyChangedEventArgs e)
         {
             ((InputElement)e.Sender).UpdateIsEnabledCore();
+        }
+
+        /// <summary>
+        /// Called before the <see cref="PointerEnter"/> event occurs.
+        /// </summary>
+        /// <param name="e">The event args.</param>
+        private void OnPointerEnterCore(PointerEventArgs e)
+        {
+            IsPointerOver = true;
+            OnPointerEnter(e);
+        }
+
+        /// <summary>
+        /// Called before the <see cref="PointerLeave"/> event occurs.
+        /// </summary>
+        /// <param name="e">The event args.</param>
+        private void OnPointerLeaveCore(PointerEventArgs e)
+        {
+            IsPointerOver = false;
+            OnPointerLeave(e);
         }
 
         /// <summary>

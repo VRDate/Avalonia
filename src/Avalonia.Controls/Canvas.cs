@@ -22,32 +22,33 @@ namespace Avalonia.Controls
         /// Defines the Left attached property.
         /// </summary>
         public static readonly AttachedProperty<double> LeftProperty =
-            AvaloniaProperty.RegisterAttached<Canvas, Control, double>("Left");
+            AvaloniaProperty.RegisterAttached<Canvas, Control, double>("Left", double.NaN);
 
         /// <summary>
         /// Defines the Top attached property.
         /// </summary>
         public static readonly AttachedProperty<double> TopProperty =
-            AvaloniaProperty.RegisterAttached<Canvas, Control, double>("Top");
+            AvaloniaProperty.RegisterAttached<Canvas, Control, double>("Top", double.NaN);
 
         /// <summary>
         /// Defines the Right attached property.
         /// </summary>
         public static readonly AttachedProperty<double> RightProperty =
-            AvaloniaProperty.RegisterAttached<Canvas, Control, double>("Right");
+            AvaloniaProperty.RegisterAttached<Canvas, Control, double>("Right", double.NaN);
 
         /// <summary>
         /// Defines the Bottom attached property.
         /// </summary>
         public static readonly AttachedProperty<double> BottomProperty =
-            AvaloniaProperty.RegisterAttached<Canvas, Control, double>("Bottom");
+            AvaloniaProperty.RegisterAttached<Canvas, Control, double>("Bottom", double.NaN);
 
         /// <summary>
         /// Initializes static members of the <see cref="Canvas"/> class.
         /// </summary>
         static Canvas()
         {
-            AffectsCanvasArrange(LeftProperty, TopProperty, RightProperty, BottomProperty);
+            ClipToBoundsProperty.OverrideDefaultValue<Canvas>(false);
+            AffectsParentArrange<Canvas>(LeftProperty, TopProperty, RightProperty, BottomProperty);
         }
 
         /// <summary>
@@ -135,8 +136,9 @@ namespace Avalonia.Controls
         /// </summary>
         /// <param name="direction">The movement direction.</param>
         /// <param name="from">The control from which movement begins.</param>
+        /// <param name="wrap">Whether to wrap around when the first or last item is reached.</param>
         /// <returns>The control.</returns>
-        IInputElement INavigableContainer.GetControl(NavigationDirection direction, IInputElement from)
+        IInputElement INavigableContainer.GetControl(NavigationDirection direction, IInputElement from, bool wrap)
         {
             // TODO: Implement this
             return null;
@@ -204,30 +206,6 @@ namespace Avalonia.Controls
             }
 
             return finalSize;
-        }
-
-        /// <summary>
-        /// Marks a property on a child as affecting the canvas' arrangement.
-        /// </summary>
-        /// <param name="properties">The properties.</param>
-        private static void AffectsCanvasArrange(params AvaloniaProperty[] properties)
-        {
-            foreach (var property in properties)
-            {
-                property.Changed.Subscribe(AffectsCanvasArrangeInvalidate);
-            }
-        }
-
-        /// <summary>
-        /// Calls <see cref="Layoutable.InvalidateArrange"/> on the parent of the control whose
-        /// property changed, if that parent is a canvas.
-        /// </summary>
-        /// <param name="e">The event args.</param>
-        private static void AffectsCanvasArrangeInvalidate(AvaloniaPropertyChangedEventArgs e)
-        {
-            var control = e.Sender as IControl;
-            var canvas = control?.VisualParent as Canvas;
-            canvas?.InvalidateArrange();
         }
     }
 }

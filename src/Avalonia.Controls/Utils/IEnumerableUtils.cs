@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections;
-using System.Globalization;
 using System.Linq;
 
 namespace Avalonia.Controls.Utils
@@ -76,7 +75,7 @@ namespace Avalonia.Controls.Utils
             }
             else
             {
-                return items.Cast<object>().ElementAt(index);
+                return Enumerable.ElementAt(items.Cast<object>(), index);
             }
         }
     }

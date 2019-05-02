@@ -4,7 +4,6 @@
 using System;
 using System.Linq;
 using Avalonia.Logging;
-using Avalonia.Platform;
 using Avalonia.VisualTree;
 
 namespace Avalonia.Layout
@@ -141,7 +140,7 @@ namespace Avalonia.Layout
         /// </summary>
         static Layoutable()
         {
-            AffectsMeasure(
+            AffectsMeasure<Layoutable>(
                 IsVisibleProperty,
                 WidthProperty,
                 HeightProperty,
@@ -153,6 +152,11 @@ namespace Avalonia.Layout
                 HorizontalAlignmentProperty,
                 VerticalAlignmentProperty);
         }
+
+        /// <summary>
+        /// Occurs when a layout pass completes for the control.
+        /// </summary>
+        public event EventHandler LayoutUpdated;
 
         /// <summary>
         /// Gets or sets the width of the element.
@@ -310,7 +314,7 @@ namespace Avalonia.Layout
                 try
                 {
                     _measuring = true;
-                    desiredSize = MeasureCore(availableSize).Constrain(availableSize);
+                    desiredSize = MeasureCore(availableSize);
                 }
                 finally
                 {
@@ -357,7 +361,17 @@ namespace Avalonia.Layout
                 IsArrangeValid = true;
                 ArrangeCore(rect);
                 _previousArrange = rect;
+
+                LayoutUpdated?.Invoke(this, EventArgs.Empty);
             }
+        }
+
+
+        /// <summary>
+        /// Called by InvalidateMeasure
+        /// </summary>
+        protected virtual void OnMeasureInvalidated()
+        {
         }
 
         /// <summary>
@@ -371,8 +385,13 @@ namespace Avalonia.Layout
 
                 IsMeasureValid = false;
                 IsArrangeValid = false;
-                LayoutManager.Instance?.InvalidateMeasure(this);
-                InvalidateVisual();
+
+                if (((ILayoutable)this).IsAttachedToVisualTree)
+                {
+                    (VisualRoot as ILayoutRoot)?.LayoutManager.InvalidateMeasure(this);
+                    InvalidateVisual();
+                }
+                OnMeasureInvalidated();
             }
         }
 
@@ -386,7 +405,7 @@ namespace Avalonia.Layout
                 Logger.Verbose(LogArea.Layout, this, "Invalidated arrange");
 
                 IsArrangeValid = false;
-                LayoutManager.Instance?.InvalidateArrange(this);
+                (VisualRoot as ILayoutRoot)?.LayoutManager?.InvalidateArrange(this);
                 InvalidateVisual();
             }
         }
@@ -408,11 +427,32 @@ namespace Avalonia.Layout
         /// After a call to this method in a control's static constructor, any change to the
         /// property will cause <see cref="InvalidateMeasure"/> to be called on the element.
         /// </remarks>
+        [Obsolete("Use AffectsMeasure<T> and specify the control type.")]
         protected static void AffectsMeasure(params AvaloniaProperty[] properties)
         {
+            AffectsMeasure<Layoutable>(properties);
+        }
+
+        /// <summary>
+        /// Marks a property as affecting the control's measurement.
+        /// </summary>
+        /// <typeparam name="T">The control which the property affects.</typeparam>
+        /// <param name="properties">The properties.</param>
+        /// <remarks>
+        /// After a call to this method in a control's static constructor, any change to the
+        /// property will cause <see cref="InvalidateMeasure"/> to be called on the element.
+        /// </remarks>
+        protected static void AffectsMeasure<T>(params AvaloniaProperty[] properties)
+            where T : class, ILayoutable
+        {
+            void Invalidate(AvaloniaPropertyChangedEventArgs e)
+            {
+                (e.Sender as T)?.InvalidateMeasure();
+            }
+
             foreach (var property in properties)
             {
-                property.Changed.Subscribe(AffectsMeasureInvalidate);
+                property.Changed.Subscribe(Invalidate);
             }
         }
 
@@ -424,11 +464,32 @@ namespace Avalonia.Layout
         /// After a call to this method in a control's static constructor, any change to the
         /// property will cause <see cref="InvalidateArrange"/> to be called on the element.
         /// </remarks>
+        [Obsolete("Use AffectsArrange<T> and specify the control type.")]
         protected static void AffectsArrange(params AvaloniaProperty[] properties)
         {
+            AffectsArrange<Layoutable>(properties);
+        }
+
+        /// <summary>
+        /// Marks a property as affecting the control's arrangement.
+        /// </summary>
+        /// <typeparam name="T">The control which the property affects.</typeparam>
+        /// <param name="properties">The properties.</param>
+        /// <remarks>
+        /// After a call to this method in a control's static constructor, any change to the
+        /// property will cause <see cref="InvalidateArrange"/> to be called on the element.
+        /// </remarks>
+        protected static void AffectsArrange<T>(params AvaloniaProperty[] properties)
+            where T : class, ILayoutable
+        {
+            void Invalidate(AvaloniaPropertyChangedEventArgs e)
+            {
+                (e.Sender as T)?.InvalidateArrange();
+            }
+
             foreach (var property in properties)
             {
-                property.Changed.Subscribe(AffectsArrangeInvalidate);
+                property.Changed.Subscribe(Invalidate);
             }
         }
 
@@ -449,10 +510,9 @@ namespace Avalonia.Layout
 
                 ApplyTemplate();
 
-                var constrained = LayoutHelper
-                    .ApplyLayoutConstraints(this, availableSize)
-                    .Deflate(margin);
-
+                var constrained = LayoutHelper.ApplyLayoutConstraints(
+                    this,
+                    availableSize.Deflate(margin));
                 var measured = MeasureOverride(constrained);
 
                 var width = measured.Width;
@@ -606,7 +666,7 @@ namespace Avalonia.Layout
         /// <inheritdoc/>
         protected override sealed void OnVisualParentChanged(IVisual oldParent, IVisual newParent)
         {
-            foreach (ILayoutable i in this.GetSelfAndVisualDescendents())
+            foreach (ILayoutable i in this.GetSelfAndVisualDescendants())
             {
                 i.InvalidateMeasure();
             }
@@ -615,27 +675,7 @@ namespace Avalonia.Layout
         }
 
         /// <summary>
-        /// Calls <see cref="InvalidateMeasure"/> on the control on which a property changed.
-        /// </summary>
-        /// <param name="e">The event args.</param>
-        private static void AffectsMeasureInvalidate(AvaloniaPropertyChangedEventArgs e)
-        {
-            ILayoutable control = e.Sender as ILayoutable;
-            control?.InvalidateMeasure();
-        }
-
-        /// <summary>
-        /// Calls <see cref="InvalidateArrange"/> on the control on which a property changed.
-        /// </summary>
-        /// <param name="e">The event args.</param>
-        private static void AffectsArrangeInvalidate(AvaloniaPropertyChangedEventArgs e)
-        {
-            ILayoutable control = e.Sender as ILayoutable;
-            control?.InvalidateArrange();
-        }
-
-        /// <summary>
-        /// Tests whether any of a <see cref="Rect"/>'s properties incude nagative values,
+        /// Tests whether any of a <see cref="Rect"/>'s properties include negative values,
         /// a NaN or Infinity.
         /// </summary>
         /// <param name="rect">The rect.</param>
@@ -650,7 +690,7 @@ namespace Avalonia.Layout
         }
 
         /// <summary>
-        /// Tests whether any of a <see cref="Size"/>'s properties incude nagative values,
+        /// Tests whether any of a <see cref="Size"/>'s properties include negative values,
         /// a NaN or Infinity.
         /// </summary>
         /// <param name="size">The size.</param>

@@ -8,7 +8,7 @@ using Avalonia.Input.Raw;
 namespace Avalonia.Input
 {
     /// <summary>
-    /// Recieves input from the windowing subsystem and dispatches it to interested parties
+    /// Receives input from the windowing subsystem and dispatches it to interested parties
     /// for processing.
     /// </summary>
     public class InputManager : IInputManager
@@ -35,6 +35,7 @@ namespace Avalonia.Input
         public void ProcessInput(RawInputEventArgs e)
         {
             _preProcess.OnNext(e);
+            e.Device?.ProcessRawEvent(e);
             _process.OnNext(e);
             _postProcess.OnNext(e);
         }

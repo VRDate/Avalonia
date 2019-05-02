@@ -2,10 +2,7 @@
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
 using System;
-using System.Linq;
-using System.Reactive.Linq;
 using Avalonia.Controls.Templates;
-using Avalonia.Data;
 using Avalonia.Interactivity;
 using Avalonia.Logging;
 using Avalonia.LogicalTree;
@@ -35,13 +32,13 @@ namespace Avalonia.Controls.Primitives
         /// <summary>
         /// Defines the <see cref="BorderThickness"/> property.
         /// </summary>
-        public static readonly StyledProperty<double> BorderThicknessProperty =
+        public static readonly StyledProperty<Thickness> BorderThicknessProperty =
             Border.BorderThicknessProperty.AddOwner<TemplatedControl>();
 
         /// <summary>
         /// Defines the <see cref="FontFamily"/> property.
         /// </summary>
-        public static readonly StyledProperty<string> FontFamilyProperty =
+        public static readonly StyledProperty<FontFamily> FontFamilyProperty =
             TextBlock.FontFamilyProperty.AddOwner<TemplatedControl>();
 
         /// <summary>
@@ -78,7 +75,7 @@ namespace Avalonia.Controls.Primitives
         /// Defines the <see cref="Template"/> property.
         /// </summary>
         public static readonly StyledProperty<IControlTemplate> TemplateProperty =
-            AvaloniaProperty.Register<TemplatedControl, IControlTemplate>("Template");
+            AvaloniaProperty.Register<TemplatedControl, IControlTemplate>(nameof(Template));
 
         /// <summary>
         /// Defines the IsTemplateFocusTarget attached property.
@@ -135,7 +132,7 @@ namespace Avalonia.Controls.Primitives
         /// <summary>
         /// Gets or sets the thickness of the control's border.
         /// </summary>
-        public double BorderThickness
+        public Thickness BorderThickness
         {
             get { return GetValue(BorderThicknessProperty); }
             set { SetValue(BorderThicknessProperty, value); }
@@ -144,7 +141,7 @@ namespace Avalonia.Controls.Primitives
         /// <summary>
         /// Gets or sets the font family used to draw the control's text.
         /// </summary>
-        public string FontFamily
+        public FontFamily FontFamily
         {
             get { return GetValue(FontFamilyProperty); }
             set { SetValue(FontFamilyProperty, value); }
@@ -210,7 +207,7 @@ namespace Avalonia.Controls.Primitives
         /// <param name="control">The control.</param>
         /// <returns>The property value.</returns>
         /// <see cref="SetIsTemplateFocusTarget(Control, bool)"/>
-        public bool GetIsTemplateFocusTarget(Control control)
+        public static bool GetIsTemplateFocusTarget(Control control)
         {
             return control.GetValue(IsTemplateFocusTargetProperty);
         }
@@ -226,7 +223,7 @@ namespace Avalonia.Controls.Primitives
         /// attached property is set to true on an element in the control template, then the focus
         /// adorner will be shown around that control instead.
         /// </remarks>
-        public void SetIsTemplateFocusTarget(Control control, bool value)
+        public static void SetIsTemplateFocusTarget(Control control, bool value)
         {
             control.SetValue(IsTemplateFocusTargetProperty, value);
         }
@@ -250,6 +247,7 @@ namespace Avalonia.Controls.Primitives
                     foreach (var child in this.GetTemplateChildren())
                     {
                         child.SetValue(TemplatedParentProperty, null);
+                        ((ISetLogicalParent)child).SetParent(null);
                     }
 
                     VisualChildren.Clear();
@@ -262,7 +260,7 @@ namespace Avalonia.Controls.Primitives
                     var child = template.Build(this);
                     var nameScope = new NameScope();
                     NameScope.SetNameScope((Control)child, nameScope);
-                    child.SetValue(TemplatedParentProperty, this);
+                    ApplyTemplatedParent(child);
                     RegisterNames(child, nameScope);
                     ((ISetLogicalParent)child).SetParent(this);
                     VisualChildren.Add(child);
@@ -272,23 +270,6 @@ namespace Avalonia.Controls.Primitives
 
                 _appliedTemplate = template;
             }
-        }
-
-        /// <inheritdoc/>
-        protected sealed override IndexerDescriptor CreateBindingDescriptor(IndexerDescriptor source)
-        {
-            var result = base.CreateBindingDescriptor(source);
-
-            // If the binding is a template binding, then complete when the Template changes.
-            if (source.Priority == BindingPriority.TemplatedParent)
-            {
-                var templateChanged = this.GetObservable(TemplateProperty).Skip(1);
-
-                result.SourceObservable = result.Source.GetObservable(result.Property)
-                    .TakeUntil(templateChanged);
-            }
-
-            return result;
         }
 
         /// <inheritdoc/>
@@ -303,6 +284,17 @@ namespace Avalonia.Controls.Primitives
             }
 
             return this;
+        }
+
+        /// <inheritdoc/>
+        protected override void OnAttachedToLogicalTree(LogicalTreeAttachmentEventArgs e)
+        {
+            if (VisualChildren.Count > 0)
+            {
+                ((ILogical)VisualChildren[0]).NotifyAttachedToLogicalTree(e);
+            }
+
+            base.OnAttachedToLogicalTree(e);
         }
 
         /// <inheritdoc/>
@@ -332,6 +324,23 @@ namespace Avalonia.Controls.Primitives
         protected virtual void OnTemplateChanged(AvaloniaPropertyChangedEventArgs e)
         {
             InvalidateMeasure();
+        }
+
+        /// <summary>
+        /// Sets the TemplatedParent property for the created template children.
+        /// </summary>
+        /// <param name="control">The control.</param>
+        private void ApplyTemplatedParent(IControl control)
+        {
+            control.SetValue(TemplatedParentProperty, this);
+
+            foreach (var child in control.LogicalChildren)
+            {
+                if (child is IControl c)
+                {
+                    ApplyTemplatedParent(c);
+                }
+            }
         }
 
         /// <summary>

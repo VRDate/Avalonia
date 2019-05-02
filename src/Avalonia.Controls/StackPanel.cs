@@ -2,59 +2,45 @@
 // Licensed under the MIT license. See licence.md file in the project root for full license information.
 
 using System;
+using System.Linq;
 using Avalonia.Input;
+using Avalonia.Layout;
 
 namespace Avalonia.Controls
 {
-    /// <summary>
-    /// Defines vertical or horizontal orientation.
-    /// </summary>
-    public enum Orientation
-    {
-        /// <summary>
-        /// Vertical orientation.
-        /// </summary>
-        Vertical,
-
-        /// <summary>
-        /// Horizontal orientation.
-        /// </summary>
-        Horizontal,
-    }
-
     /// <summary>
     /// A panel which lays out its children horizontally or vertically.
     /// </summary>
     public class StackPanel : Panel, INavigableContainer
     {
         /// <summary>
-        /// Defines the <see cref="Gap"/> property.
+        /// Defines the <see cref="Spacing"/> property.
         /// </summary>
-        public static readonly StyledProperty<double> GapProperty =
-            AvaloniaProperty.Register<StackPanel, double>(nameof(Gap));
+        public static readonly StyledProperty<double> SpacingProperty =
+            AvaloniaProperty.Register<StackPanel, double>(nameof(Spacing));
 
         /// <summary>
         /// Defines the <see cref="Orientation"/> property.
         /// </summary>
         public static readonly StyledProperty<Orientation> OrientationProperty =
-            AvaloniaProperty.Register<StackPanel, Orientation>(nameof(Orientation));
+            AvaloniaProperty.Register<StackPanel, Orientation>(nameof(Orientation), Orientation.Vertical);
 
         /// <summary>
         /// Initializes static members of the <see cref="StackPanel"/> class.
         /// </summary>
         static StackPanel()
         {
-            AffectsMeasure(GapProperty);
-            AffectsMeasure(OrientationProperty);
+            AffectsMeasure<StackPanel>(SpacingProperty);
+            AffectsMeasure<StackPanel>(OrientationProperty);
         }
 
         /// <summary>
-        /// Gets or sets the size of the gap to place between child controls.
+        /// Gets or sets the size of the spacing to place between child controls.
         /// </summary>
-        public double Gap
+        public double Spacing
         {
-            get { return GetValue(GapProperty); }
-            set { SetValue(GapProperty, value); }
+            get { return GetValue(SpacingProperty); }
+            set { SetValue(SpacingProperty, value); }
         }
 
         /// <summary>
@@ -71,11 +57,49 @@ namespace Avalonia.Controls
         /// </summary>
         /// <param name="direction">The movement direction.</param>
         /// <param name="from">The control from which movement begins.</param>
+        /// <param name="wrap">Whether to wrap around when the first or last item is reached.</param>
         /// <returns>The control.</returns>
-        IInputElement INavigableContainer.GetControl(NavigationDirection direction, IInputElement from)
+        IInputElement INavigableContainer.GetControl(NavigationDirection direction, IInputElement from, bool wrap)
         {
-            var fromControl = from as IControl;
-            return (fromControl != null) ? GetControlInDirection(direction, fromControl) : null;
+            var result = GetControlInDirection(direction, from as IControl);
+
+            if (result == null && wrap)
+            {
+                if (Orientation == Orientation.Vertical)
+                {
+                    switch (direction)
+                    {
+                        case NavigationDirection.Up:
+                        case NavigationDirection.Previous:
+                        case NavigationDirection.PageUp:
+                            result = GetControlInDirection(NavigationDirection.Last, null);
+                            break;
+                        case NavigationDirection.Down:
+                        case NavigationDirection.Next:
+                        case NavigationDirection.PageDown:
+                            result = GetControlInDirection(NavigationDirection.First, null);
+                            break;
+                    }
+                }
+                else
+                {
+                    switch (direction)
+                    {
+                        case NavigationDirection.Left:
+                        case NavigationDirection.Previous:
+                        case NavigationDirection.PageUp:
+                            result = GetControlInDirection(NavigationDirection.Last, null);
+                            break;
+                        case NavigationDirection.Right:
+                        case NavigationDirection.Next:
+                        case NavigationDirection.PageDown:
+                            result = GetControlInDirection(NavigationDirection.First, null);
+                            break;
+                    }
+                }
+            }
+
+            return result;
         }
 
         /// <summary>
@@ -87,7 +111,7 @@ namespace Avalonia.Controls
         protected virtual IInputElement GetControlInDirection(NavigationDirection direction, IControl from)
         {
             var horiz = Orientation == Orientation.Horizontal;
-            int index = Children.IndexOf((IControl)from);
+            int index = from != null ? Children.IndexOf(from) : -1;
 
             switch (direction)
             {
@@ -98,22 +122,22 @@ namespace Avalonia.Controls
                     index = Children.Count - 1;
                     break;
                 case NavigationDirection.Next:
-                    ++index;
+                    if (index != -1) ++index;
                     break;
                 case NavigationDirection.Previous:
-                    --index;
+                    if (index != -1) --index;
                     break;
                 case NavigationDirection.Left:
-                    index = horiz ? index - 1 : -1;
+                    if (index != -1) index = horiz ? index - 1 : -1;
                     break;
                 case NavigationDirection.Right:
-                    index = horiz ? index + 1 : -1;
+                    if (index != -1) index = horiz ? index + 1 : -1;
                     break;
                 case NavigationDirection.Up:
-                    index = horiz ? -1 : index - 1;
+                    if (index != -1) index = horiz ? -1 : index - 1;
                     break;
                 case NavigationDirection.Down:
-                    index = horiz ? -1 : index + 1;
+                    if (index != -1) index = horiz ? -1 : index + 1;
                     break;
                 default:
                     index = -1;
@@ -167,7 +191,8 @@ namespace Avalonia.Controls
 
             double measuredWidth = 0;
             double measuredHeight = 0;
-            double gap = Gap;
+            double spacing = Spacing;
+            bool hasVisibleChild = Children.Any(c => c.IsVisible);
 
             foreach (Control child in Children)
             {
@@ -176,39 +201,35 @@ namespace Avalonia.Controls
 
                 if (Orientation == Orientation.Vertical)
                 {
-                    measuredHeight += size.Height + gap;
+                    measuredHeight += size.Height + (child.IsVisible ? spacing : 0);
                     measuredWidth = Math.Max(measuredWidth, size.Width);
                 }
                 else
                 {
-                    measuredWidth += size.Width + gap;
+                    measuredWidth += size.Width + (child.IsVisible ? spacing : 0);   
                     measuredHeight = Math.Max(measuredHeight, size.Height);
                 }
             }
 
-            return new Size(measuredWidth, measuredHeight);
-        }
-
-        /// <summary>
-        /// Arranges the control's children.
-        /// </summary>
-        /// <param name="finalSize">The size allocated to the control.</param>
-        /// <returns>The space taken.</returns>
-        protected override Size ArrangeOverride(Size finalSize)
-        {
-            var orientation = Orientation;
-            double arrangedWidth = finalSize.Width;
-            double arrangedHeight = finalSize.Height;
-            double gap = Gap;
-
             if (Orientation == Orientation.Vertical)
             {
-                arrangedHeight = 0;
+                measuredHeight -= (hasVisibleChild ? spacing : 0);
             }
             else
             {
-                arrangedWidth = 0;
+                measuredWidth -= (hasVisibleChild ? spacing : 0);
             }
+
+            return new Size(measuredWidth, measuredHeight).Constrain(availableSize);
+        }
+
+        /// <inheritdoc/>
+        protected override Size ArrangeOverride(Size finalSize)
+        {
+            var orientation = Orientation;
+            var spacing = Spacing;
+            var finalRect = new Rect(finalSize);
+            var pos = 0.0;
 
             foreach (Control child in Children)
             {
@@ -217,32 +238,21 @@ namespace Avalonia.Controls
 
                 if (orientation == Orientation.Vertical)
                 {
-                    double width = Math.Max(childWidth, arrangedWidth);
-                    Rect childFinal = new Rect(0, arrangedHeight, width, childHeight);
-                    ArrangeChild(child, childFinal, finalSize, orientation);
-                    arrangedWidth = Math.Max(arrangedWidth, childWidth);
-                    arrangedHeight += childHeight + gap;
+                    var rect = new Rect(0, pos, childWidth, childHeight)
+                        .Align(finalRect, child.HorizontalAlignment, VerticalAlignment.Top);
+                    ArrangeChild(child, rect, finalSize, orientation);
+                    pos += childHeight + spacing;
                 }
                 else
                 {
-                    double height = Math.Max(childHeight, arrangedHeight);
-                    Rect childFinal = new Rect(arrangedWidth, 0, childWidth, height);
-                    ArrangeChild(child, childFinal, finalSize, orientation);
-                    arrangedWidth += childWidth + gap;
-                    arrangedHeight = Math.Max(arrangedHeight, childHeight);
+                    var rect = new Rect(pos, 0, childWidth, childHeight)
+                        .Align(finalRect, HorizontalAlignment.Left, child.VerticalAlignment);
+                    ArrangeChild(child, rect, finalSize, orientation);
+                    pos += childWidth + spacing;
                 }
             }
 
-            if (orientation == Orientation.Vertical)
-            {
-                arrangedHeight = Math.Max(arrangedHeight - gap, finalSize.Height);
-            }
-            else
-            {
-                arrangedWidth = Math.Max(arrangedWidth - gap, finalSize.Width);
-            }
-
-            return new Size(arrangedWidth, arrangedHeight);
+            return finalSize;
         }
 
         internal virtual void ArrangeChild(
